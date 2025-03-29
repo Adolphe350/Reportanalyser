@@ -1211,12 +1211,12 @@
                 recommendationsList.innerHTML = '';
                 
                 // Find the document in our loaded documents
-                const document = allDocuments.find(doc => doc.objectName === documentId);
+                const docInfo = allDocuments.find(doc => doc.objectName === documentId);
                 
                 // Set the file name and size if document is found
-                if (document) {
-                    fileName.textContent = document.name || 'Unknown file';
-                    fileSize.textContent = formatFileSize(document.size);
+                if (docInfo) {
+                    fileName.textContent = docInfo.name || 'Unknown file';
+                    fileSize.textContent = formatFileSize(docInfo.size);
                 } else {
                     fileName.textContent = documentId;
                     fileSize.textContent = 'Unknown size';
