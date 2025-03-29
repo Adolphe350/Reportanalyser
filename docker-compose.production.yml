@@ -9,7 +9,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 9000
-    working_dir: /srv/app
+    working_dir: /simple-app
     labels:
       - traefik.enable=true
       - "traefik.http.routers.reportanalyser.rule=Host(`${HOST_DOMAIN}`)"
