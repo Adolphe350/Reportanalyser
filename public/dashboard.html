@@ -1268,6 +1268,9 @@
                             if (analysisData.summary) {
                                 console.log('Found summary:', analysisData.summary);
                                 documentSummary.innerHTML = analysisData.summary;
+                            } else if (data.summary) {
+                                console.log('Found summary at root level:', data.summary);
+                                documentSummary.innerHTML = data.summary;
                             } else {
                                 console.warn('No summary found in analysis data');
                                 documentSummary.innerHTML = 'No summary available';
@@ -1275,7 +1278,7 @@
                             
                             // DISPLAY INSIGHTS
                             // Check multiple possible property names for insights
-                            const insights = analysisData.keyInsights || analysisData.insights || [];
+                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
                             console.log('Found insights:', insights);
                             
                             if (insights && insights.length > 0) {
@@ -1296,7 +1299,7 @@
                             }
                             
                             // DISPLAY METRICS
-                            const metrics = analysisData.metrics || {};
+                            const metrics = analysisData.metrics || data.metrics || {};
                             console.log('Found metrics:', metrics);
                             
                             if (metrics && Object.keys(metrics).length > 0) {
@@ -1306,8 +1309,15 @@
                                     const metricCard = document.createElement('div');
                                     metricCard.className = 'metric-card';
                                     
+                                    let displayValue = value;
+                                    if (Array.isArray(value)) {
+                                        displayValue = value.join(', ');
+                                    } else if (typeof value === 'object') {
+                                        displayValue = JSON.stringify(value);
+                                    }
+                                    
                                     metricCard.innerHTML = `
-                                        <div class="metric-value">${value}</div>
+                                        <div class="metric-value">${displayValue}</div>
                                         <div class="metric-label">${key}</div>
                                     `;
                                     
@@ -1318,7 +1328,7 @@
                             }
                             
                             // DISPLAY RECOMMENDATIONS
-                            const recommendations = analysisData.recommendations || [];
+                            const recommendations = analysisData.recommendations || data.recommendations || [];
                             console.log('Found recommendations:', recommendations);
                             
                             if (recommendations && recommendations.length > 0) {

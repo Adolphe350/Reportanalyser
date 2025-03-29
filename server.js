@@ -1613,6 +1613,36 @@ async function handleGetAnalysis(req, res) {
     
     if (!analysisData) {
       console.log(`[API] No analysis found for file ID: ${fileId}`);
+      
+      // Try a fallback approach - if the ID doesn't start with "analysis-", 
+      // we might be dealing with a regular file that has an associated analysis
+      if (!fileId.startsWith('analysis-')) {
+        console.log(`[API] Trying to find analysis for regular file ID: ${fileId}`);
+        // Try with "analysis-" prefix
+        const alternateId = `analysis-${fileId}`;
+        console.log(`[API] Checking alternate ID: ${alternateId}`);
+        
+        const alternateAnalysisData = await getAnalysisFromMinIO(alternateId);
+        if (alternateAnalysisData) {
+          console.log(`[API] Found analysis using alternate ID: ${alternateId}`);
+          
+          // Return success with the alternate analysis data
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Connection': 'close',
+            'X-Response-Time': `${Date.now() - start}ms`
+          });
+          
+          res.end(JSON.stringify({
+            success: true,
+            message: 'Analysis retrieved successfully (using alternate ID)',
+            data: alternateAnalysisData
+          }));
+          return;
+        }
+      }
+      
+      // No analysis found with any approach
       res.writeHead(404, {
         'Content-Type': 'application/json',
         'Connection': 'close'
@@ -1632,18 +1662,32 @@ async function handleGetAnalysis(req, res) {
     if (analysisData.analysis) {
       console.log(`[API] Analysis nested structure: ${Object.keys(analysisData.analysis).join(', ')}`);
       
-      // Check each key property in the nested analysis
-      const nestedAnalysis = analysisData.analysis;
-      if (nestedAnalysis.summary) console.log(`[API] Found summary in nested analysis (${typeof nestedAnalysis.summary}, length: ${nestedAnalysis.summary.length})`);
-      if (nestedAnalysis.insights || nestedAnalysis.keyInsights) console.log(`[API] Found insights in nested analysis (count: ${(nestedAnalysis.insights || nestedAnalysis.keyInsights || []).length})`);
-      if (nestedAnalysis.metrics) console.log(`[API] Found metrics in nested analysis (count: ${Object.keys(nestedAnalysis.metrics || {}).length})`);
-      if (nestedAnalysis.recommendations) console.log(`[API] Found recommendations in nested analysis (count: ${(nestedAnalysis.recommendations || []).length})`);
-    } else {
-      // If analysis is not nested, check for direct properties
-      if (analysisData.summary) console.log(`[API] Found summary at root level (${typeof analysisData.summary}, length: ${analysisData.summary.length})`);
-      if (analysisData.insights || analysisData.keyInsights) console.log(`[API] Found insights at root level (count: ${(analysisData.insights || analysisData.keyInsights || []).length})`);
-      if (analysisData.metrics) console.log(`[API] Found metrics at root level (count: ${Object.keys(analysisData.metrics || {}).length})`);
-      if (analysisData.recommendations) console.log(`[API] Found recommendations at root level (count: ${(analysisData.recommendations || []).length})`);
+      // Make a copy to avoid modifying the original
+      const returnData = {...analysisData};
+      
+      // If analysis is nested but there is no root level summary/insights/etc,
+      // copy the analysis properties to the root for backward compatibility
+      if (!returnData.summary && returnData.analysis.summary) {
+        console.log('[API] Copying nested analysis properties to root level for compatibility');
+        returnData.summary = returnData.analysis.summary;
+        returnData.keyInsights = returnData.analysis.keyInsights || returnData.analysis.insights;
+        returnData.metrics = returnData.analysis.metrics;
+        returnData.recommendations = returnData.analysis.recommendations;
+      }
+      
+      // Return the improved analysis data
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Connection': 'close',
+        'X-Response-Time': `${Date.now() - start}ms`
+      });
+      
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Analysis retrieved successfully',
+        data: returnData
+      }));
+      return;
     }
     
     // Return the analysis data
