@@ -1442,19 +1442,44 @@ async function getAnalysisFromMinIO(fileId) {
   try {
     console.log(`[MINIO] Retrieving analysis results for fileId: "${fileId}"`);
     
-    // Check if the fileId starts with 'analysis-' and adjust if necessary
-    const analysisId = fileId.startsWith('analysis-') ? fileId : `analysis-${fileId}`;
-    console.log(`[MinIO] Using analysis ID: ${analysisId}`);
+    // Try multiple possible formats of the analysis ID
+    let possibleIds = [];
     
-    try {
-        // Attempt to retrieve the analysis data
-        const data = await minioClient.getObject('analysis-bucket', analysisId);
-        console.log(`[MinIO] Successfully retrieved analysis for ID: ${analysisId}`);
-        return data;
-    } catch (error) {
-        console.error(`[MinIO] Error retrieving analysis for ID: ${analysisId}`, error);
-        return null;
+    // Format 1: If already prefixed with analysis-, use as is
+    if (fileId.startsWith('analysis-')) {
+      possibleIds.push(fileId);
+    } else {
+      // Format 2: Standard format with analysis- prefix
+      possibleIds.push(`analysis-${fileId}`);
+      
+      // Format 3: Without timestamp prefix if it has one
+      if (fileId.match(/^\d+\-/)) {
+        const baseId = fileId.replace(/^\d+\-/, '');
+        possibleIds.push(`analysis-${baseId}`);
+      }
+      
+      // Format 4: Just the original ID without any prefix
+      possibleIds.push(fileId);
     }
+    
+    console.log(`[MINIO] Will try these possible analysis IDs:`, possibleIds);
+    
+    // Try each possible ID in sequence
+    for (const analysisId of possibleIds) {
+      try {
+        console.log(`[MINIO] Attempting to retrieve with ID: "${analysisId}" from bucket: "${minioBucket}"`);
+        const data = await minioClient.getObject(minioBucket, analysisId);
+        console.log(`[MINIO] Successfully retrieved analysis for ID: ${analysisId}`);
+        return data;
+      } catch (error) {
+        console.log(`[MINIO] Could not retrieve with ID: "${analysisId}", error: ${error.message}`);
+        // Continue to the next ID
+      }
+    }
+    
+    // If we get here, none of the IDs worked
+    console.log(`[MINIO] All attempts to retrieve analysis failed for fileId: "${fileId}"`);
+    return null;
   } catch (err) {
     console.error(`[MINIO] Unexpected error in getAnalysisFromMinIO: ${err.message}`);
     return null;
@@ -1508,11 +1533,11 @@ async function handleGetAnalysis(req, res) {
     
     // Get the analysis data from MinIO
     try {
-      const analysisData = await getAnalysisFromMinIO(fileId);
+      const dataStream = await getAnalysisFromMinIO(fileId);
       // Clear the timeout since we got a response
       clearTimeout(analysisTimeout);
       
-      if (!analysisData) {
+      if (!dataStream) {
         console.log(`[API] No analysis found for file ID: ${fileId}`);
         return res.end(JSON.stringify({
           success: false,
@@ -1521,17 +1546,47 @@ async function handleGetAnalysis(req, res) {
         }));
       }
       
-      // Return the analysis data
-      console.log(`[API] Successfully retrieved analysis for file ID: ${fileId}`);
+      // Process the data stream to get the analysis data
+      let analysisJson = '';
       
-      // Format the response to match the expected format in the client
-      const response = {
-        success: true,
-        message: 'Analysis retrieved successfully',
-        data: analysisData
-      };
+      dataStream.on('data', chunk => {
+        analysisJson += chunk;
+      });
       
-      return res.end(JSON.stringify(response));
+      dataStream.on('error', err => {
+        console.error(`[API] Error reading analysis stream: ${err.message}`);
+        return res.end(JSON.stringify({
+          success: false,
+          message: 'Error reading analysis data',
+          error: err.message
+        }));
+      });
+      
+      dataStream.on('end', () => {
+        try {
+          // Parse the JSON data
+          const analysisData = JSON.parse(analysisJson);
+          
+          // Return the analysis data
+          console.log(`[API] Successfully retrieved analysis for file ID: ${fileId}`);
+          
+          // Format the response to match the expected format in the client
+          const response = {
+            success: true,
+            message: 'Analysis retrieved successfully',
+            data: analysisData
+          };
+          
+          return res.end(JSON.stringify(response));
+        } catch (parseError) {
+          console.error(`[API] Error parsing analysis JSON: ${parseError.message}`);
+          return res.end(JSON.stringify({
+            success: false,
+            message: 'Error parsing analysis data',
+            error: parseError.message
+          }));
+        }
+      });
     } catch (analysisError) {
       // Clear the timeout since we got an error
       clearTimeout(analysisTimeout);
