@@ -1434,163 +1434,140 @@ async function saveAnalysisToMinIO(analysisResults, fileName, fileId) {
 
 // Function to retrieve analysis results from MinIO by file ID
 async function getAnalysisFromMinIO(fileId) {
-  if (!minioAvailable || !minioClient) {
-    console.log(`[MINIO] MinIO not available, cannot retrieve analysis results`);
-    return null;
-  }
-  
-  try {
-    // Original fileId for logging
-    const originalFileId = fileId;
-    console.log(`[MINIO] Retrieving analysis for original file ID: ${originalFileId}`);
+    console.log(`[MINIO] Attempting to retrieve analysis results for object: ${fileId}`);
     
-    // Try multiple ways to find the analysis document
+    if (!fileId) {
+        console.error('[MINIO] Error: No file ID provided');
+        return null;
+    }
+
+    // Create multiple possible IDs for retrieving the analysis (including handling parentheses and spaces)
     const possibleIds = [];
     
-    // 1. If already an analysis ID, use as is
-    if (fileId.startsWith('analysis-')) {
-      possibleIds.push(fileId);
-    } else {
-      // 2. Standard analysis ID - remove timestamp prefix first
-      const baseFileId = fileId.replace(/^\d+\-/, '');
-      possibleIds.push(`analysis-${baseFileId}`);
-      
-      // 3. Also try with original ID (with timestamp prefix)
-      possibleIds.push(`analysis-${fileId}`);
-    }
+    // Original ID (without analysis- prefix)
+    possibleIds.push(fileId);
     
-    // For each ID, create URL-encoded variants
-    const allPossibleIds = [...possibleIds];
+    // With analysis- prefix (common format)
+    const baseNameWithoutTimestamp = fileId.includes('-') ? fileId.split('-').slice(1).join('-') : fileId;
+    possibleIds.push(`analysis-${baseNameWithoutTimestamp}`);
     
-    // Add URL-encoded variants
-    possibleIds.forEach(id => {
-      if (id.includes(' ') || id.includes('(') || id.includes(')')) {
-        // Replace spaces with %20
-        const encodedId = id.replace(/ /g, '%20')
-                           .replace(/\(/g, '%28')
-                           .replace(/\)/g, '%29');
-        if (!allPossibleIds.includes(encodedId)) {
-          allPossibleIds.push(encodedId);
-        }
-        
-        // Also try without parentheses entirely
-        const noParensId = id.replace(/\(.*?\)/g, '').replace(/  /g, ' ').trim();
-        if (noParensId !== id && !allPossibleIds.includes(`analysis-${noParensId}`)) {
-          allPossibleIds.push(`analysis-${noParensId}`);
-        }
-      }
-    });
+    // Without timestamp, just the filename part
+    possibleIds.push(`analysis-${baseNameWithoutTimestamp}`);
     
-    console.log(`[MINIO] Will try these possible IDs: ${allPossibleIds.join(', ')}`);
+    // Remove parentheses and spaces version
+    const cleanedId = baseNameWithoutTimestamp.replace(/\s+/g, '').replace(/\([^)]*\)/g, '');
+    possibleIds.push(`analysis-${cleanedId}`);
     
-    // First list all analysis objects to see what's available
-    let allAnalysisObjects = [];
-    try {
-      const stream = await minioClient.listObjects(minioBucket, '', true);
-      
-      await new Promise((resolve, reject) => {
-        stream.on('data', (obj) => {
-          if (obj.name.startsWith('analysis-')) {
-            allAnalysisObjects.push(obj.name);
-          }
-        });
-        
-        stream.on('end', resolve);
-        stream.on('error', reject);
-      });
-      
-      console.log(`[MINIO] Found ${allAnalysisObjects.length} analysis objects in bucket`);
-      
-      // Log the first few objects to help with debugging
-      if (allAnalysisObjects.length > 0) {
-        console.log(`[MINIO] Sample analysis objects: ${allAnalysisObjects.slice(0, 5).join(', ')}${allAnalysisObjects.length > 5 ? '...' : ''}`);
-      }
-      
-    } catch (listError) {
-      console.error(`[MINIO] Error listing objects: ${listError.message}`);
-    }
+    // Simple prefix version
+    possibleIds.push(`analysis-${fileId}`);
     
-    // Try to find a fuzzy match if we have specific markers in the original fileId
-    if (originalFileId.includes('(') || originalFileId.includes(')') || originalFileId.includes(' ')) {
-      console.log(`[MINIO] Original ID has special characters, trying fuzzy matching`);
-      
-      // Extract the base filename without timestamp and without extension
-      const match = originalFileId.match(/(?:\d+-)?([^.]+)/);
-      if (match && match[1]) {
-        const baseNameToMatch = match[1].replace(/\(\d+\)/g, '').trim();
-        console.log(`[MINIO] Looking for analysis objects containing: ${baseNameToMatch}`);
-        
-        // Find any analysis object containing this base name
-        const fuzzyMatches = allAnalysisObjects.filter(name => {
-          // Decode the name for comparison
-          const decodedName = decodeURIComponent(name);
-          return decodedName.includes(baseNameToMatch);
-        });
-        
-        if (fuzzyMatches.length > 0) {
-          console.log(`[MINIO] Found ${fuzzyMatches.length} potential fuzzy matches: ${fuzzyMatches.join(', ')}`);
-          // Add these to our list of IDs to try
-          fuzzyMatches.forEach(match => {
-            if (!allPossibleIds.includes(match)) {
-              allPossibleIds.push(match);
+    // Log all the IDs we'll try
+    console.log(`[MINIO] Will try these analysis IDs: ${JSON.stringify(possibleIds)}`);
+    
+    // Get the list of all objects in the bucket
+    const objects = await listObjectsInBucket();
+    console.log(`[MINIO] Found ${objects.length} total objects in bucket`);
+    
+    // Log analysis objects
+    const analysisObjects = objects.filter(obj => obj.name.includes('analysis-'));
+    console.log(`[MINIO] Analysis objects in bucket: ${analysisObjects.length}`);
+    console.log(`[MINIO] Analysis object names: ${JSON.stringify(analysisObjects.map(obj => obj.name))}`);
+    
+    // First try exact matches with our possible IDs
+    for (const id of possibleIds) {
+        try {
+            console.log(`[MINIO] Trying to retrieve object with ID: ${id}`);
+            const analysisData = await minioClient.getObject(bucketName, id);
+            
+            let chunks = [];
+            let dataLength = 0;
+            
+            analysisData.on('data', function(chunk) {
+                chunks.push(chunk);
+                dataLength += chunk.length;
+            });
+            
+            const buffer = await new Promise((resolve, reject) => {
+                analysisData.on('end', function() {
+                    const buf = Buffer.concat(chunks, dataLength);
+                    console.log(`[MINIO] Successfully retrieved analysis data (${buf.length} bytes) for ID: ${id}`);
+                    resolve(buf);
+                });
+                
+                analysisData.on('error', function(err) {
+                    console.log(`[MINIO] Error retrieving analysis data for ID ${id}: ${err}`);
+                    resolve(null);
+                });
+            });
+            
+            if (buffer) {
+                return buffer;
             }
-          });
+        } catch (err) {
+            console.log(`[MINIO] Error in getObject for ID ${id}: ${err.message}`);
+            // Continue to try next ID
         }
-      }
     }
     
-    // Try each possible ID in sequence
-    for (const possibleId of allPossibleIds) {
-      console.log(`[MINIO] Trying to retrieve analysis with ID: ${possibleId}`);
-      
-      try {
-        // Check if this object exists
-        await minioClient.statObject(minioBucket, possibleId);
-        console.log(`[MINIO] Found analysis object with ID: ${possibleId}`);
+    // If exact matches failed, try fuzzy matching with the base filename
+    console.log('[MINIO] Exact matches failed, trying fuzzy matching');
+    
+    // Extract core filename (remove timestamp and extensions)
+    let coreFilename = '';
+    if (fileId.includes('-')) {
+        coreFilename = fileId.split('-').slice(1).join('-');
+        if (coreFilename.includes('.')) {
+            coreFilename = coreFilename.split('.')[0];
+        }
+        // Remove any parentheses and numbers inside
+        coreFilename = coreFilename.replace(/\s*\(\d+\)\s*/g, '');
+    }
+    
+    if (coreFilename) {
+        console.log(`[MINIO] Trying fuzzy matching with core filename: ${coreFilename}`);
         
-        // Get the analysis object from MinIO
-        const dataStream = await minioClient.getObject(minioBucket, possibleId);
+        // Find analysis objects that contain our core filename
+        const matchingObjects = analysisObjects.filter(obj => obj.name.includes(coreFilename));
+        console.log(`[MINIO] Found ${matchingObjects.length} potential matches: ${JSON.stringify(matchingObjects.map(obj => obj.name))}`);
         
-        const analysisData = await new Promise((resolve, reject) => {
-          let data = '';
-          
-          dataStream.on('data', chunk => {
-            data += chunk;
-          });
-          
-          dataStream.on('end', () => {
-            console.log(`[MINIO] Successfully retrieved analysis data with ID ${possibleId} (${data.length} bytes)`);
+        for (const obj of matchingObjects) {
             try {
-              const parsedData = JSON.parse(data);
-              console.log(`[MINIO] Successfully parsed JSON for ${possibleId}`);
-              resolve(parsedData);
+                console.log(`[MINIO] Trying to retrieve matched object: ${obj.name}`);
+                const analysisData = await minioClient.getObject(bucketName, obj.name);
+                
+                let chunks = [];
+                let dataLength = 0;
+                
+                analysisData.on('data', function(chunk) {
+                    chunks.push(chunk);
+                    dataLength += chunk.length;
+                });
+                
+                const buffer = await new Promise((resolve, reject) => {
+                    analysisData.on('end', function() {
+                        const buf = Buffer.concat(chunks, dataLength);
+                        console.log(`[MINIO] Successfully retrieved analysis data (${buf.length} bytes) for fuzzy matched ID: ${obj.name}`);
+                        resolve(buf);
+                    });
+                    
+                    analysisData.on('error', function(err) {
+                        console.log(`[MINIO] Error retrieving analysis data for fuzzy matched ID ${obj.name}: ${err}`);
+                        resolve(null);
+                    });
+                });
+                
+                if (buffer) {
+                    return buffer;
+                }
             } catch (err) {
-              console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-              reject(err);
+                console.log(`[MINIO] Error in getObject for fuzzy matched ID ${obj.name}: ${err.message}`);
+                // Continue to try next match
             }
-          });
-          
-          dataStream.on('error', err => {
-            console.error(`[MINIO] Error reading analysis data stream: ${err.message}`);
-            reject(err);
-          });
-        });
-        
-        return analysisData;
-      } catch (err) {
-        console.log(`[MINIO] Could not find or access analysis with ID ${possibleId}: ${err.message}`);
-        // Continue to the next ID
-      }
+        }
     }
-    
-    // If we get here, we couldn't find any matching analysis
-    console.log(`[MINIO] No matching analysis found after trying ${allPossibleIds.length} possible IDs`);
+
+    console.log(`[MINIO] No analysis data found for file ID: ${fileId} after trying all methods`);
     return null;
-    
-  } catch (err) {
-    console.error(`[MINIO] Error retrieving analysis from MinIO: ${err.message}`);
-    return null;
-  }
 }
 
 // Add a new API endpoint to get analysis for a specific file
