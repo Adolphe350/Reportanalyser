@@ -809,6 +809,112 @@
             const mainDashboardContainer = document.querySelector('.main-dashboard');
             const reportsHeader = document.querySelector('.reports-header h2');
             
+            // Set up file upload event handlers
+            if (uploadButton && fileInput) {
+                // When the upload button is clicked, trigger the hidden file input
+                uploadButton.addEventListener('click', function() {
+                    fileInput.click();
+                });
+                
+                // When a file is selected, handle the upload
+                fileInput.addEventListener('change', function(e) {
+                    if (fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        uploadFile(file);
+                    }
+                });
+                
+                // Make the upload area support drag and drop
+                if (uploadArea) {
+                    uploadArea.addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        uploadArea.classList.add('drag-over');
+                    });
+                    
+                    uploadArea.addEventListener('dragleave', function() {
+                        uploadArea.classList.remove('drag-over');
+                    });
+                    
+                    uploadArea.addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        uploadArea.classList.remove('drag-over');
+                        
+                        if (e.dataTransfer.files.length > 0) {
+                            const file = e.dataTransfer.files[0];
+                            uploadFile(file);
+                        }
+                    });
+                }
+            }
+            
+            // Function to handle file uploads
+            function uploadFile(file) {
+                // Show uploading state
+                uploadArea.classList.add('uploading');
+                progressContainer.style.display = 'block';
+                progressFill.style.width = '0%';
+                progressText.textContent = 'Uploading... 0%';
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const xhr = new XMLHttpRequest();
+                
+                // Track upload progress
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressFill.style.width = percentComplete + '%';
+                        progressText.textContent = `Uploading... ${percentComplete}%`;
+                    }
+                });
+                
+                // Handle upload completion
+                xhr.addEventListener('load', function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        console.log('File uploaded successfully');
+                        progressText.textContent = 'Upload complete!';
+                        
+                        // Reset the file input
+                        fileInput.value = '';
+                        
+                        // After a short delay, hide the progress bar and reset the upload area
+                        setTimeout(function() {
+                            uploadArea.classList.remove('uploading');
+                            progressContainer.style.display = 'none';
+                            
+                            // Refresh the documents list
+                            loadRecentDocuments();
+                        }, 1500);
+                    } else {
+                        console.error('Upload failed');
+                        progressText.textContent = 'Upload failed. Please try again.';
+                        uploadArea.classList.remove('uploading');
+                        
+                        // After a delay, hide the progress bar
+                        setTimeout(function() {
+                            progressContainer.style.display = 'none';
+                        }, 3000);
+                    }
+                });
+                
+                // Handle network errors
+                xhr.addEventListener('error', function() {
+                    console.error('Network error during upload');
+                    progressText.textContent = 'Network error. Please try again.';
+                    uploadArea.classList.remove('uploading');
+                    
+                    // After a delay, hide the progress bar
+                    setTimeout(function() {
+                        progressContainer.style.display = 'none';
+                    }, 3000);
+                });
+                
+                // Start the upload
+                xhr.open('POST', '/api/upload', true);
+                xhr.send(formData);
+            }
+            
             // Store all documents for use in "All Reports" view
             let allDocuments = [];
             let currentView = 'recent'; // 'recent' or 'all'
