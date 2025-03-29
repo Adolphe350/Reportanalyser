@@ -1442,34 +1442,38 @@ async function getAnalysisFromMinIO(fileId) {
   try {
     console.log(`[MINIO] Retrieving analysis results for fileId: "${fileId}"`);
     
-    // First, determine what kind of ID we have and log details to help debug
-    const hasTimestamp = /^\d+\-/.test(fileId);
-    const hasAnalysisPrefix = fileId.startsWith('analysis-');
+    // Simplified approach: Format the ID as needed and try once
+    let analysisId = fileId;
     
-    console.log(`[MINIO] ID Analysis - Has timestamp prefix: ${hasTimestamp}, Has analysis- prefix: ${hasAnalysisPrefix}`);
+    // If the ID doesn't already have the analysis- prefix, add it
+    if (!fileId.startsWith('analysis-')) {
+      // Check if there's a timestamp prefix and remove it
+      const baseFileId = fileId.replace(/^\d+\-/, '');
+      analysisId = `analysis-${baseFileId}`;
+    }
     
-    // Create a base ID without the timestamp prefix (if present)
-    const baseFileId = hasTimestamp ? fileId.replace(/^\d+\-/, '') : fileId;
-    console.log(`[MINIO] Base file ID (without timestamp): "${baseFileId}"`);
+    console.log(`[MINIO] Attempting to retrieve with ID: "${analysisId}"`);
     
-    // Attempt 1: Try with "analysis-" prefix + baseFileId (standard format)
-    let analysisId = hasAnalysisPrefix ? fileId : `analysis-${baseFileId}`;
-    console.log(`[MINIO] Attempt 1 - Using ID: "${analysisId}"`);
-    
+    // Add a timeout to avoid hanging forever
     try {
-      // Get the analysis object from MinIO
+      // Get the analysis object from MinIO with a simpler approach
       const dataStream = await minioClient.getObject(bucketName, analysisId);
-      console.log(`[MINIO] Successfully found object with ID: "${analysisId}"`);
       
       // Read and return the analysis data
       return new Promise((resolve, reject) => {
         let dataBuffer = '';
+        
+        // Set a timeout to avoid hanging
+        const timeout = setTimeout(() => {
+          reject(new Error('Timed out waiting for analysis data'));
+        }, 5000); // 5 second timeout
         
         dataStream.on('data', chunk => {
           dataBuffer += chunk;
         });
         
         dataStream.on('end', () => {
+          clearTimeout(timeout);
           console.log(`[MINIO] Successfully retrieved analysis data (${dataBuffer.length} bytes)`);
           try {
             const analysisData = JSON.parse(dataBuffer);
@@ -1481,31 +1485,36 @@ async function getAnalysisFromMinIO(fileId) {
         });
         
         dataStream.on('error', err => {
+          clearTimeout(timeout);
           console.error(`[MINIO] Error reading analysis: ${err.message}`);
           reject(err);
         });
       });
     } catch (err) {
-      console.log(`[MINIO] Attempt 1 failed - Error retrieving analysis with ID "${analysisId}": ${err.message}`);
+      console.log(`[MINIO] Error retrieving analysis with ID "${analysisId}": ${err.message}`);
       
-      // Attempt 2: If we didn't try with the full ID yet, try with "analysis-" + full fileId
-      if (!hasAnalysisPrefix && analysisId !== `analysis-${fileId}`) {
-        const fullAnalysisId = `analysis-${fileId}`;
-        console.log(`[MINIO] Attempt 2 - Using full ID: "${fullAnalysisId}"`);
+      // Try one fallback if needed: the original fileId without modification
+      if (analysisId !== fileId) {
+        console.log(`[MINIO] Trying fallback with original ID: "${fileId}"`);
         
         try {
-          const dataStream = await minioClient.getObject(bucketName, fullAnalysisId);
-          console.log(`[MINIO] Successfully found object with full ID: "${fullAnalysisId}"`);
+          const dataStream = await minioClient.getObject(bucketName, fileId);
           
           return new Promise((resolve, reject) => {
             let dataBuffer = '';
+            
+            // Set a timeout to avoid hanging
+            const timeout = setTimeout(() => {
+              reject(new Error('Timed out waiting for analysis data'));
+            }, 5000); // 5 second timeout
             
             dataStream.on('data', chunk => {
               dataBuffer += chunk;
             });
             
             dataStream.on('end', () => {
-              console.log(`[MINIO] Successfully retrieved analysis data with full ID (${dataBuffer.length} bytes)`);
+              clearTimeout(timeout);
+              console.log(`[MINIO] Successfully retrieved analysis data with original ID (${dataBuffer.length} bytes)`);
               try {
                 const analysisData = JSON.parse(dataBuffer);
                 resolve(analysisData);
@@ -1516,62 +1525,21 @@ async function getAnalysisFromMinIO(fileId) {
             });
             
             dataStream.on('error', err => {
-              console.error(`[MINIO] Error reading analysis with full ID: ${err.message}`);
+              clearTimeout(timeout);
+              console.error(`[MINIO] Error reading analysis with original ID: ${err.message}`);
               reject(err);
             });
           });
-        } catch (altErr) {
-          console.log(`[MINIO] Attempt 2 failed - Error retrieving analysis with full ID "${fullAnalysisId}": ${altErr.message}`);
-          
-          // Attempt 3: Try without any prefix
-          if (baseFileId !== fileId && baseFileId !== analysisId) {
-            console.log(`[MINIO] Attempt 3 - Using base ID without any prefix: "${baseFileId}"`);
-            
-            try {
-              const dataStream = await minioClient.getObject(bucketName, baseFileId);
-              console.log(`[MINIO] Successfully found object with base ID: "${baseFileId}"`);
-              
-              return new Promise((resolve, reject) => {
-                let dataBuffer = '';
-                
-                dataStream.on('data', chunk => {
-                  dataBuffer += chunk;
-                });
-                
-                dataStream.on('end', () => {
-                  console.log(`[MINIO] Successfully retrieved analysis data with base ID (${dataBuffer.length} bytes)`);
-                  try {
-                    const analysisData = JSON.parse(dataBuffer);
-                    resolve(analysisData);
-                  } catch (err) {
-                    console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-                    reject(err);
-                  }
-                });
-                
-                dataStream.on('error', err => {
-                  console.error(`[MINIO] Error reading analysis with base ID: ${err.message}`);
-                  reject(err);
-                });
-              });
-            } catch (baseErr) {
-              console.log(`[MINIO] Attempt 3 failed - Error retrieving analysis with base ID "${baseFileId}": ${baseErr.message}`);
-              console.log(`[MINIO] All retrieval attempts failed for ${fileId}. Analysis not found.`);
-              return null;
-            }
-          } else {
-            console.log(`[MINIO] No more ID variations to try for ${fileId}. Analysis not found.`);
-            return null;
-          }
+        } catch (fallbackErr) {
+          console.log(`[MINIO] Fallback failed - Error retrieving analysis with original ID "${fileId}": ${fallbackErr.message}`);
+          return null;
         }
       } else {
-        console.log(`[MINIO] No more ID variations to try for ${fileId}. Analysis not found.`);
         return null;
       }
     }
   } catch (err) {
     console.error(`[MINIO] Unexpected error in getAnalysisFromMinIO: ${err.message}`);
-    console.error(err.stack);
     return null;
   }
 }
@@ -1579,57 +1547,92 @@ async function getAnalysisFromMinIO(fileId) {
 // Add a new API endpoint to get analysis for a specific file
 async function handleGetAnalysis(req, res) {
   console.log(`[API] Received get analysis request`);
-  console.log(`[API] Starting get analysis handler`);
   
   try {
+    // Set headers immediately to prevent cache issues
+    res.writeHead(200, { 
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Connection': 'close' // Close connection after response
+    });
+    
     // Get the file ID from the query parameters
     const urlParts = req.url.split('?');
     if (urlParts.length < 2) {
-      throw new Error('Missing file ID parameter');
+      console.log('[API] Missing file ID parameter');
+      return res.end(JSON.stringify({
+        success: false,
+        message: 'Missing file ID parameter'
+      }));
     }
     
     const queryParams = new URLSearchParams(urlParts[1]);
     const fileId = queryParams.get('id');
     
     if (!fileId) {
-      throw new Error('Missing file ID parameter');
+      console.log('[API] Missing file ID parameter');
+      return res.end(JSON.stringify({
+        success: false,
+        message: 'Missing file ID parameter'
+      }));
     }
     
     console.log(`[API] Retrieving analysis for file ID: ${fileId}`);
     
-    // Get the analysis data from MinIO
-    const analysisData = await getAnalysisFromMinIO(fileId);
-    
-    if (!analysisData) {
-      console.log(`[API] No analysis found for file ID: ${fileId}`);
+    // Set a timeout to prevent hanging requests
+    const analysisTimeout = setTimeout(() => {
+      console.log(`[API] Analysis retrieval timed out for file ID: ${fileId}`);
       return res.end(JSON.stringify({
         success: false,
-        message: 'Analysis not found',
-        error: 'The requested analysis does not exist'
-      }), 'utf8');
+        message: 'Analysis retrieval timed out',
+        error: 'Request took too long to process'
+      }));
+    }, 15000); // 15 second timeout
+    
+    // Get the analysis data from MinIO
+    try {
+      const analysisData = await getAnalysisFromMinIO(fileId);
+      // Clear the timeout since we got a response
+      clearTimeout(analysisTimeout);
+      
+      if (!analysisData) {
+        console.log(`[API] No analysis found for file ID: ${fileId}`);
+        return res.end(JSON.stringify({
+          success: false,
+          message: 'Analysis not found',
+          error: 'The requested analysis does not exist'
+        }));
+      }
+      
+      // Return the analysis data
+      console.log(`[API] Successfully retrieved analysis for file ID: ${fileId}`);
+      
+      // Format the response to match the expected format in the client
+      const response = {
+        success: true,
+        message: 'Analysis retrieved successfully',
+        data: analysisData
+      };
+      
+      return res.end(JSON.stringify(response));
+    } catch (analysisError) {
+      // Clear the timeout since we got an error
+      clearTimeout(analysisTimeout);
+      
+      console.error(`[API] Error retrieving analysis: ${analysisError.message}`);
+      return res.end(JSON.stringify({
+        success: false,
+        message: 'Error retrieving analysis',
+        error: analysisError.message
+      }));
     }
-    
-    // Return the analysis data
-    console.log(`[API] Returning analysis data for file ID: ${fileId}`);
-    
-    // Format the response to match the expected format in the client
-    const response = {
-      success: true,
-      message: 'Analysis retrieved successfully',
-      data: analysisData
-    };
-    
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(response), 'utf8');
-    
   } catch (error) {
-    console.error(`[API] Error retrieving analysis: ${error.message}`);
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
+    console.error(`[API] Unexpected error in handleGetAnalysis: ${error.message}`);
+    return res.end(JSON.stringify({
       success: false,
-      message: 'Error retrieving analysis',
+      message: 'Unexpected error',
       error: error.message
-    }), 'utf8');
+    }));
   }
 }
 

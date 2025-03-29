@@ -1247,15 +1247,27 @@
                     // Log details for debugging
                     console.log(`Fetching analysis data for ID: ${analysisId}`);
                     
+                    // Create a controller to abort the fetch if it takes too long
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+                    
                     // Fetch the analysis from the server API endpoint, let the server handle the logic
-                    fetch(`/api/analysis?id=${analysisId}`)
+                    fetch(`/api/analysis?id=${analysisId}`, {
+                        signal: controller.signal,
+                        headers: {
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache'
+                        }
+                    })
                         .then(response => {
+                            clearTimeout(timeoutId);
                             console.log(`Analysis API response status: ${response.status}`);
+                            
                             if (!response.ok) {
                                 return response.json().catch(() => {
-                                    throw new Error(`Analysis not found for this file`);
+                                    throw new Error(`Analysis not found for this file (Status: ${response.status})`);
                                 }).then(errorData => {
-                                    throw new Error(errorData.message || `Analysis not found for this file`);
+                                    throw new Error(errorData.message || `Analysis not found for this file (Status: ${response.status})`);
                                 });
                             }
                             return response.json();
@@ -1376,19 +1388,26 @@
                             analysisResults.scrollIntoView({ behavior: 'smooth' });
                         })
                         .catch(error => {
+                            clearTimeout(timeoutId);
                             console.error('Error loading analysis:', error);
+                            
+                            // Special handling for AbortError (timeout)
+                            const errorMessage = error.name === 'AbortError' 
+                                ? 'The request took too long to complete. The server might be busy or experiencing issues.'
+                                : error.message;
                             
                             // Display a more helpful error message with suggestions
                             documentSummary.innerHTML = `
                                 <div class="error-message">
-                                    <h3>Error loading analysis: ${error.message}</h3>
+                                    <h3>Error loading analysis: ${errorMessage}</h3>
                                     <p>This could be because:</p>
                                     <ul>
+                                        <li>The server is currently experiencing high load or connection issues</li>
                                         <li>The document has not been analyzed yet</li>
                                         <li>The analysis file may have a different name format than expected</li>
                                         <li>The analysis file may have been removed or corrupted</li>
                                     </ul>
-                                    <p>You can try uploading the document again to generate a new analysis.</p>
+                                    <p>If the problem persists, try uploading the document again to generate a new analysis or contact support.</p>
                                 </div>
                             `;
                             
