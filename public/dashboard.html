@@ -1222,11 +1222,23 @@
                     fileSize.textContent = 'Unknown size';
                 }
                 
+                // Check if analysis exists first by trying the original API endpoint
+                console.log(`Attempting to fetch analysis from: /api/analysis?id=analysis-${encodeURIComponent(analysisId)}`);
+                
                 // Fetch the analysis directly from MinIO, using an API endpoint
-                fetch(`/api/analysis?id=analysis-${analysisId}`)
+                // Use encodeURIComponent to handle spaces and special characters in the ID
+                fetch(`/api/analysis?id=analysis-${encodeURIComponent(analysisId)}`)
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                            console.error(`API returned status ${response.status} for analysis ID: analysis-${analysisId}`);
+                            
+                            // Check if there's a specific API message in the error
+                            return response.json().catch(() => {
+                                // If we can't parse JSON from the error response, throw the original error
+                                throw new Error(`API error: ${response.status} ${response.statusText}`);
+                            }).then(errorData => {
+                                throw new Error(errorData.message || `API error: ${response.status}`);
+                            });
                         }
                         return response.json();
                     })
@@ -1347,7 +1359,25 @@
                     })
                     .catch(error => {
                         console.error('Error loading analysis:', error);
-                        documentSummary.innerHTML = `<div class="error-message">Error loading analysis: ${error.message}</div>`;
+                        
+                        // Display a more helpful error message with suggestions
+                        documentSummary.innerHTML = `
+                            <div class="error-message">
+                                <h3>Error loading analysis: ${error.message}</h3>
+                                <p>This could be because:</p>
+                                <ul>
+                                    <li>The document has not been analyzed yet</li>
+                                    <li>The analysis file may have a different name format than expected</li>
+                                    <li>The analysis file may have been removed or corrupted</li>
+                                </ul>
+                                <p>You can try uploading the document again to generate a new analysis.</p>
+                            </div>
+                        `;
+                        
+                        // Empty other containers
+                        insightsContainer.innerHTML = '';
+                        metricsContainer.innerHTML = '';
+                        recommendationsList.innerHTML = '';
                     });
             }
             
