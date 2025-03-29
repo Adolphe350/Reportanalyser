@@ -1520,10 +1520,25 @@ async function handleGetAnalysis(req, res) {
       return;
     }
     
-    // Add detailed logging of the analysis data structure
+    // Enhanced debugging of analysis data structure
     console.log(`[API] Analysis data structure: ${Object.keys(analysisData).join(', ')}`);
+    
+    // Check if analysis property exists and log its structure
     if (analysisData.analysis) {
       console.log(`[API] Analysis nested structure: ${Object.keys(analysisData.analysis).join(', ')}`);
+      
+      // Check each key property in the nested analysis
+      const nestedAnalysis = analysisData.analysis;
+      if (nestedAnalysis.summary) console.log(`[API] Found summary in nested analysis (${typeof nestedAnalysis.summary}, length: ${nestedAnalysis.summary.length})`);
+      if (nestedAnalysis.insights || nestedAnalysis.keyInsights) console.log(`[API] Found insights in nested analysis (count: ${(nestedAnalysis.insights || nestedAnalysis.keyInsights || []).length})`);
+      if (nestedAnalysis.metrics) console.log(`[API] Found metrics in nested analysis (count: ${Object.keys(nestedAnalysis.metrics || {}).length})`);
+      if (nestedAnalysis.recommendations) console.log(`[API] Found recommendations in nested analysis (count: ${(nestedAnalysis.recommendations || []).length})`);
+    } else {
+      // If analysis is not nested, check for direct properties
+      if (analysisData.summary) console.log(`[API] Found summary at root level (${typeof analysisData.summary}, length: ${analysisData.summary.length})`);
+      if (analysisData.insights || analysisData.keyInsights) console.log(`[API] Found insights at root level (count: ${(analysisData.insights || analysisData.keyInsights || []).length})`);
+      if (analysisData.metrics) console.log(`[API] Found metrics at root level (count: ${Object.keys(analysisData.metrics || {}).length})`);
+      if (analysisData.recommendations) console.log(`[API] Found recommendations at root level (count: ${(analysisData.recommendations || []).length})`);
     }
     
     // Return the analysis data

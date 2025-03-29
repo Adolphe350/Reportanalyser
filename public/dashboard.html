@@ -1237,19 +1237,35 @@
                         }
                         
                         try {
+                            // Log the full response structure for debugging
+                            console.log('Analysis API Response:', response);
+                            
+                            // Get the data object from the response
                             const data = response.data;
-                            console.log('Analysis retrieved:', data);
-                            console.log('Analysis structure:', Object.keys(data));
+                            console.log('Analysis data object:', data);
+                            console.log('Data structure keys:', Object.keys(data));
                             
-                            // Access the actual analysis data which is inside the 'analysis' property
+                            // Get the actual analysis object - it can be nested in an 'analysis' property
+                            // or can be directly in specific properties like 'summary', 'insights', etc.
+                            // If analysis property exists, use that, otherwise use the data object itself
                             const analysisData = data.analysis || data;
-                            console.log('Analysis data to display:', analysisData);
+                            console.log('Final analysis data to display:', analysisData);
+                            console.log('Analysis data keys:', Object.keys(analysisData));
                             
-                            // Display summary
-                            documentSummary.innerHTML = analysisData.summary || data.summary || 'No summary available';
+                            // DISPLAY SUMMARY
+                            if (analysisData.summary) {
+                                console.log('Found summary:', analysisData.summary);
+                                documentSummary.innerHTML = analysisData.summary;
+                            } else {
+                                console.warn('No summary found in analysis data');
+                                documentSummary.innerHTML = 'No summary available';
+                            }
                             
-                            // Display insights from the correct location
-                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || [];
+                            // DISPLAY INSIGHTS
+                            // Check multiple possible property names for insights
+                            const insights = analysisData.keyInsights || analysisData.insights || [];
+                            console.log('Found insights:', insights);
+                            
                             if (insights && insights.length > 0) {
                                 const insightsList = document.createElement('ul');
                                 insightsList.className = 'insight-list';
@@ -1267,8 +1283,10 @@
                                 insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
                             }
                             
-                            // Display metrics if available from the correct location
-                            const metrics = analysisData.metrics || data.metrics || {};
+                            // DISPLAY METRICS
+                            const metrics = analysisData.metrics || {};
+                            console.log('Found metrics:', metrics);
+                            
                             if (metrics && Object.keys(metrics).length > 0) {
                                 metricsContainer.innerHTML = '';
                                 
@@ -1287,8 +1305,10 @@
                                 metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
                             }
                             
-                            // Display recommendations from the correct location
-                            const recommendations = analysisData.recommendations || data.recommendations || [];
+                            // DISPLAY RECOMMENDATIONS
+                            const recommendations = analysisData.recommendations || [];
+                            console.log('Found recommendations:', recommendations);
+                            
                             if (recommendations && recommendations.length > 0) {
                                 recommendationsList.innerHTML = '';
                                 
@@ -1301,10 +1321,15 @@
                                 recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
                             }
                             
-                            // Display raw data as a fallback if no structured data was found
-                            if (!analysisData.summary && !insights.length && !Object.keys(metrics).length && !recommendations.length) {
+                            // FALLBACK: Display raw data if no structured content was found
+                            const hasContent = analysisData.summary || 
+                                             (insights && insights.length > 0) || 
+                                             (Object.keys(metrics).length > 0) || 
+                                             (recommendations && recommendations.length > 0);
+                            
+                            if (!hasContent) {
                                 console.warn('No structured analysis data found, displaying raw data');
-                                documentSummary.innerHTML = '<strong>Document Analysis:</strong><br><br>' + 
+                                documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
                                     '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
                                     JSON.stringify(data, null, 2) + 
                                     '</pre>';
