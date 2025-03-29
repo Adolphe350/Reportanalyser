@@ -11,6 +11,10 @@ try {
   console.error(`[STARTUP] Error loading dotenv: ${err.message}`);
 }
 
+// Load PDF.js
+const pdfjsLib = require('pdfjs-dist');
+pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(__dirname, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.js');
+
 const port = process.env.PORT || 9000;
 
 // Add Gemini API dependency
@@ -296,8 +300,58 @@ function getSimulatedAnalysisResults(fileName) {
   };
 }
 
-// Function to extract text from various file types
-function extractTextFromFile(buffer, fileType, fileName) {
+// Advanced function to extract text from PDF files
+async function extractTextFromPDF(pdfBuffer) {
+  console.log(`[PDF] Starting PDF text extraction (${pdfBuffer.length} bytes)`);
+  
+  try {
+    // Load the PDF document
+    const pdfData = new Uint8Array(pdfBuffer);
+    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+    
+    console.log(`[PDF] Loading PDF document`);
+    const pdf = await loadingTask.promise;
+    console.log(`[PDF] PDF loaded with ${pdf.numPages} pages`);
+    
+    // Extract text from each page
+    let fullText = '';
+    
+    // Process only the first 20 pages to avoid excessive processing
+    const maxPages = Math.min(pdf.numPages, 20);
+    
+    for (let i = 1; i <= maxPages; i++) {
+      console.log(`[PDF] Processing page ${i}/${maxPages}`);
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      
+      // Concatenate the text items with proper spacing
+      const pageText = textContent.items
+        .map(item => item.str)
+        .join(' ');
+      
+      fullText += pageText + '\n\n';
+      
+      // Log snippet of extracted text
+      if (i === 1) {
+        console.log(`[PDF] First page text sample: ${pageText.substring(0, 100)}...`);
+      }
+    }
+    
+    if (pdf.numPages > maxPages) {
+      fullText += `\n\n[Note: Only the first ${maxPages} pages were processed out of ${pdf.numPages} total pages]`;
+    }
+    
+    console.log(`[PDF] Extracted ${fullText.length} characters of text from PDF`);
+    return fullText;
+  } catch (err) {
+    console.error(`[PDF] Error extracting text from PDF: ${err.message}`);
+    console.error(err.stack);
+    return `Error extracting text from PDF: ${err.message}`;
+  }
+}
+
+// Improved function to extract text from various file types
+async function extractTextFromFile(buffer, fileType, fileName) {
   console.log(`[EXTRACT] Extracting text from ${fileName} (${fileType})`);
   
   // If it's a text file, return the actual content
@@ -308,77 +362,79 @@ function extractTextFromFile(buffer, fileType, fileName) {
   
   // Check if it's a PDF by looking for the PDF signature
   const isPDF = buffer.slice(0, 5).toString().includes('%PDF');
-  if (isPDF) {
-    console.log(`[EXTRACT] PDF file detected by signature check`);
+  if (isPDF || fileType === 'application/pdf') {
+    console.log(`[EXTRACT] PDF file detected, using PDF.js for extraction`);
+    return await extractTextFromPDF(buffer);
+  }
+  
+  // For all other file types
+  console.log(`[EXTRACT] Unsupported file type: ${fileType}, using simulated content`);
+  
+  return `[This is placeholder text for ${fileName}. In a production environment, you would use specialized libraries to extract text from this file type (${fileType}).]`;
+}
+
+// Improved multipart form data parser
+function parseMultipartFormData(buffer, boundary) {
+  console.log(`[PARSER] Parsing multipart form data with boundary: ${boundary}`);
+  
+  try {
+    // Convert buffer to string for easier processing
+    const data = buffer.toString('binary');
     
-    // Look for text content in the PDF (simplified)
-    const bufferStr = buffer.toString('utf8', 0, Math.min(buffer.length, 10000));
+    // Create boundary markers
+    const boundaryStart = `--${boundary}`;
+    const boundaryEnd = `--${boundary}--`;
     
-    // Extract some real text snippets if found
-    const textSnippets = [];
-    let textContentFound = false;
+    // Split the data by boundary
+    const parts = data.split(boundaryStart);
     
-    // Look for text objects in PDF
-    const textMatches = bufferStr.match(/\(([^)]+)\)/g);
-    if (textMatches && textMatches.length > 10) {
-      textContentFound = true;
-      textMatches.slice(0, 50).forEach(match => {
-        // Clean up the text and add to snippets if it looks like actual text
-        const text = match.substring(1, match.length - 1)
-          .replace(/\\n/g, '\n')
-          .replace(/\\r/g, '')
-          .replace(/\\\(/g, '(')
-          .replace(/\\\)/g, ')');
-          
-        if (text.length > 5 && /[a-zA-Z]{3,}/.test(text)) {
-          textSnippets.push(text);
+    // Process each part (skip the first which is usually empty)
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      
+      // Skip if this is the end boundary
+      if (part.includes(boundaryEnd)) continue;
+      
+      // Check if this part contains a file
+      if (part.includes('filename=')) {
+        // Extract filename
+        const filenameMatch = part.match(/filename="([^"]+)"/i);
+        const filename = filenameMatch ? filenameMatch[1] : 'unknown';
+        
+        // Find the header-body separator (double CRLF)
+        const headerEndIndex = part.indexOf('\r\n\r\n');
+        if (headerEndIndex === -1) continue;
+        
+        // Get content type
+        const contentTypeMatch = part.match(/Content-Type:\s*([^\r\n]+)/i);
+        const contentType = contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream';
+        
+        // Extract file data (skip the double CRLF)
+        let fileData = part.substring(headerEndIndex + 4);
+        
+        // Remove trailing CR LF if present
+        if (fileData.endsWith('\r\n')) {
+          fileData = fileData.substring(0, fileData.length - 2);
         }
-      });
-      
-      console.log(`[EXTRACT] Found ${textSnippets.length} text snippets in PDF`);
-      
-      if (textSnippets.length > 0) {
-        return `Content extracted from ${fileName} (PDF)\n\n${textSnippets.join('\n\n')}`;
+        
+        // Convert binary string back to buffer
+        const fileBuffer = Buffer.from(fileData, 'binary');
+        
+        console.log(`[PARSER] Found file: ${filename}, type: ${contentType}, size: ${fileBuffer.length} bytes`);
+        
+        return {
+          filename,
+          contentType,
+          data: fileBuffer
+        };
       }
     }
     
-    if (!textContentFound) {
-      console.log(`[EXTRACT] Could not extract text content from PDF, using simulated content`);
-    }
+    throw new Error('No file found in form data');
+  } catch (err) {
+    console.error(`[PARSER] Error parsing multipart form data: ${err.message}`);
+    throw err;
   }
-  
-  // For all other file types or if text extraction failed
-  console.log(`[EXTRACT] Using simulated content for ${fileName}`);
-  
-  // Get the filename without extension to use in the simulated content
-  const fileBaseName = path.basename(fileName, path.extname(fileName));
-  
-  // Create more realistic simulated content based on the filename
-  return `Content extracted from ${fileName} (${fileType})
-  
-${fileBaseName} Analysis Report
-
-Executive Summary:
-This analysis explores the key metrics and strategic opportunities identified in ${fileBaseName}. 
-The document provides valuable insights into market dynamics, operational performance, and customer engagement strategies.
-
-Key Findings:
-- Market growth potential identified in the APAC and Latin American regions
-- Customer satisfaction rating improved by 23% following the implementation of new service protocols
-- Digital transformation initiatives have yielded a 15% reduction in operational costs
-- Competitor landscape shows opportunities for strategic acquisitions in the SMB segment
-- ESG initiatives have demonstrated measurable impact on brand perception and customer loyalty
-
-Recommendations:
-- Allocate additional marketing resources to high-growth regions identified in the analysis
-- Expand the customer feedback program to include real-time response mechanisms
-- Evaluate automation potential in the fulfillment and distribution processes
-- Pursue strategic partnerships with complementary service providers
-- Develop comprehensive sustainability metrics and incorporate into quarterly reporting
-
-The analysis concludes that ${fileBaseName} demonstrates significant potential for 
-growth through strategic investments in customer experience enhancement and operational efficiency improvements.
-  `;
 }
 
 // Function to serve a file
@@ -465,7 +521,7 @@ function serveFile(req, res, filePath) {
   });
 }
 
-// Function to handle file uploads
+// Function to handle file uploads - updated with better multipart parsing
 function handleFileUpload(req, res) {
   console.log(`[UPLOAD] Starting file upload handler`);
   const start = Date.now();
@@ -521,8 +577,6 @@ function handleFileUpload(req, res) {
   
   // Set up variables for tracking data
   let buffer = Buffer.alloc(0);
-  let fileName = '';
-  let fileType = '';
   let totalBytesReceived = 0;
   
   // Handle data chunks as they arrive
@@ -541,44 +595,32 @@ function handleFileUpload(req, res) {
     console.log(`[UPLOAD] Upload complete. Processing...`);
     
     try {
-      // Simple parsing of the first file in multipart data
-      // Note: This is a very simplified parser for demonstration purposes
-      const dataStr = buffer.toString();
+      // Parse the multipart form data to extract the file
+      const fileInfo = parseMultipartFormData(buffer, boundary);
       
-      // Find filename from form-data
-      const filenameMatch = dataStr.match(/filename="([^"]+)"/i);
-      if (filenameMatch) {
-        fileName = filenameMatch[1];
-        console.log(`[UPLOAD] Filename: ${fileName}`);
+      if (!fileInfo) {
+        throw new Error('No file found in the upload data');
       }
       
-      // Extract file type
-      if (fileName) {
-        const ext = path.extname(fileName).toLowerCase();
-        fileType = contentTypeMap[ext] || 'application/octet-stream';
-        console.log(`[UPLOAD] File type: ${fileType}`);
-      }
-      
-      // Find the actual file data boundary
-      const headerEndIndex = dataStr.indexOf('\r\n\r\n');
-      if (headerEndIndex === -1) {
-        throw new Error('Invalid multipart format: Could not find header boundary');
-      }
+      const { filename, contentType: fileType, data: fileBuffer } = fileInfo;
       
       // Generate a unique filename for storage
-      const uniqueFilename = `${Date.now()}-${fileName || 'upload'}`;
+      const uniqueFilename = `${Date.now()}-${filename || 'upload'}`;
       const filePath = path.join(uploadsDir, uniqueFilename);
       
       console.log(`[UPLOAD] Saving file to ${filePath}`);
       
-      // In a real implementation, you would extract the file content from the multipart data
-      // and save it to disk. For this demo, we'll simulate the file processing.
+      // Actually save the file (unlike before)
+      fs.writeFileSync(filePath, fileBuffer);
+      console.log(`[UPLOAD] File saved successfully (${fileBuffer.length} bytes)`);
       
       // Extract text from the file
-      const documentText = extractTextFromFile(buffer, fileType, fileName);
+      console.log(`[UPLOAD] Extracting text from file`);
+      const documentText = await extractTextFromFile(fileBuffer, fileType, filename);
       
       // Analyze the document using Gemini AI
-      const analysisResults = await analyzeDocumentWithGemini(documentText, fileName);
+      console.log(`[UPLOAD] Starting AI analysis`);
+      const analysisResults = await analyzeDocumentWithGemini(documentText, filename);
       
       // Respond with success and analysis results
       console.log(`[UPLOAD] File processed successfully in ${Date.now() - start}ms`);
@@ -593,20 +635,22 @@ function handleFileUpload(req, res) {
         success: true,
         message: 'File uploaded and analyzed successfully',
         file: {
-          originalName: fileName,
-          size: totalBytesReceived,
+          originalName: filename,
+          size: fileBuffer.length,
           type: fileType,
           savedAs: uniqueFilename
         },
         analysis: {
           title: 'Analysis Summary',
           timestamp: new Date().toISOString(),
+          documentText: documentText.substring(0, 500) + '...',
           ...analysisResults
         }
       }));
       
     } catch (err) {
       console.error(`[UPLOAD] Error processing upload: ${err.message}`);
+      console.error(err.stack);
       res.writeHead(500, {
         'Content-Type': 'application/json',
         'Connection': 'close'
