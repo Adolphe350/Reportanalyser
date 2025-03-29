@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - AI Report Analyzer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dashboard-page">
+    <header>
+        <div class="logo">
+            <h1><a href="/">AI Report Analyzer</a></h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="/dashboard" class="active"><i class="fas fa-chart-line"></i> Dashboard</a></li>
+            </ul>
+        </nav>
+        <div class="right-nav">
+            <a href="/admin" class="admin-link"><i class="fas fa-cog"></i> Admin</a>
+            <a href="/help" class="help-link"><i class="fas fa-question-circle"></i></a>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="#" class="active"><i class="fas fa-tachometer-alt"></i> Overview</a></li>
+                    <li><a href="#"><i class="fas fa-file-alt"></i> Reports</a></li>
+                    <li><a href="#"><i class="fas fa-chart-pie"></i> Analytics</a></li>
+                    <li><a href="#"><i class="fas fa-lightbulb"></i> Insights</a></li>
+                    <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <div class="dashboard-content">
+            <div class="dashboard-header">
+                <h1>Dashboard</h1>
+                <div class="actions">
+                    <button class="btn-upload"><i class="fas fa-upload"></i> Upload Report</button>
+                </div>
+            </div>
+
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Reports</h3>
+                        <p class="stat-value">12</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Insights Generated</h3>
+                        <p class="stat-value">48</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Recommendations</h3>
+                        <p class="stat-value">36</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Processing Time</h3>
+                        <p class="stat-value">2.4 mins</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-reports">
+                <div class="section-header">
+                    <h2>Recent Reports</h2>
+                    <a href="#" class="view-all">View All</a>
+                </div>
+                <div class="reports-table-container">
+                    <table class="reports-table">
+                        <thead>
+                            <tr>
+                                <th>Report Name</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Insights</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Q1 Financial Report</td>
+                                <td>May 12, 2025</td>
+                                <td><span class="status-completed">Completed</span></td>
+                                <td>12</td>
+                                <td class="actions-cell">
+                                    <button class="btn-view"><i class="fas fa-eye"></i></button>
+                                    <button class="btn-download"><i class="fas fa-download"></i></button>
+                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Marketing Analysis 2025</td>
+                                <td>May 10, 2025</td>
+                                <td><span class="status-completed">Completed</span></td>
+                                <td>8</td>
+                                <td class="actions-cell">
+                                    <button class="btn-view"><i class="fas fa-eye"></i></button>
+                                    <button class="btn-download"><i class="fas fa-download"></i></button>
+                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Operations Audit</td>
+                                <td>May 8, 2025</td>
+                                <td><span class="status-processing">Processing</span></td>
+                                <td>--</td>
+                                <td class="actions-cell">
+                                    <button class="btn-view disabled"><i class="fas fa-eye"></i></button>
+                                    <button class="btn-download disabled"><i class="fas fa-download"></i></button>
+                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 AI Report Analyzer. All rights reserved.</p>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html> 
