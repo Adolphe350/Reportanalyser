@@ -813,6 +813,22 @@
             let allDocuments = [];
             let currentView = 'recent'; // 'recent' or 'all'
             
+            // Get the New Analysis button in the header
+            const newAnalysisButton = document.querySelector('.dashboard-header .btn');
+            
+            // Add click handler for the New Analysis button
+            if (newAnalysisButton && uploadButton) {
+                newAnalysisButton.addEventListener('click', function() {
+                    // Focus on the upload area
+                    uploadArea.scrollIntoView({ behavior: 'smooth' });
+                    
+                    // Trigger the upload button click
+                    setTimeout(() => {
+                        uploadButton.click();
+                    }, 300);
+                });
+            }
+            
             // Set up sidebar navigation
             setupSidebarNavigation();
             
