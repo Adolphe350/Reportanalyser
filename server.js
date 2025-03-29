@@ -1460,17 +1460,103 @@ async function getAnalysisFromMinIO(fileId) {
       
       // Format 4: Just the original ID without any prefix
       possibleIds.push(fileId);
+      
+      // Format 5: Base filename without extension or timestamp
+      if (fileId.includes('.') && fileId.match(/^\d+\-/)) {
+        const baseNameWithoutExt = fileId.replace(/^\d+\-/, '').split('.')[0];
+        possibleIds.push(`analysis-${baseNameWithoutExt}`);
+      }
     }
     
-    console.log(`[MINIO] Will try these possible analysis IDs:`, possibleIds);
+    console.log(`[MINIO] Will try these possible analysis IDs: ${JSON.stringify(possibleIds)}`);
+    
+    // List all objects in the bucket to help debugging
+    try {
+      console.log(`[MINIO] Listing first 20 objects in bucket "${minioBucket}" to help debugging:`);
+      const objectsStream = minioClient.listObjects(minioBucket, '', true);
+      let count = 0;
+      const objects = [];
+      
+      // Create a promise to get the objects
+      await new Promise((resolve, reject) => {
+        objectsStream.on('data', (obj) => {
+          if (count < 20) {
+            objects.push(obj.name);
+            count++;
+          }
+        });
+        
+        objectsStream.on('error', (err) => {
+          console.error(`[MINIO] Error listing objects: ${err.message}`);
+          resolve(); // Resolve anyway to continue with the ID attempts
+        });
+        
+        objectsStream.on('end', () => {
+          resolve();
+        });
+      });
+      
+      console.log(`[MINIO] Available objects (max 20): ${objects.join(', ')}`);
+      
+      // Look for possible matches in the list
+      for (const obj of objects) {
+        if (obj.startsWith('analysis-')) {
+          for (const id of possibleIds) {
+            // Check for partial match
+            if (obj.includes(id.replace('analysis-', '')) || 
+                id.includes(obj.replace('analysis-', ''))) {
+              console.log(`[MINIO] Potential match found: ${obj} might match ${id}`);
+              // Add this to our list if not already there
+              if (!possibleIds.includes(obj)) {
+                possibleIds.push(obj);
+                console.log(`[MINIO] Added potential match to ID list: ${obj}`);
+              }
+            }
+          }
+        }
+      }
+    } catch (listErr) {
+      console.error(`[MINIO] Error listing objects for debugging: ${listErr.message}`);
+      // Continue with our original list of IDs
+    }
     
     // Try each possible ID in sequence
     for (const analysisId of possibleIds) {
       try {
         console.log(`[MINIO] Attempting to retrieve with ID: "${analysisId}" from bucket: "${minioBucket}"`);
-        const data = await minioClient.getObject(minioBucket, analysisId);
+        const dataStream = await minioClient.getObject(minioBucket, analysisId);
         console.log(`[MINIO] Successfully retrieved analysis for ID: ${analysisId}`);
-        return data;
+        
+        // Debug the data stream
+        let streamContent = '';
+        
+        // Return a Promise that will resolve with the data
+        return new Promise((resolve, reject) => {
+          dataStream.on('data', chunk => {
+            streamContent += chunk;
+            console.log(`[MINIO] Received ${chunk.length} bytes of data`);
+          });
+          
+          dataStream.on('error', err => {
+            console.error(`[MINIO] Error reading stream: ${err.message}`);
+            reject(err);
+          });
+          
+          dataStream.on('end', () => {
+            console.log(`[MINIO] Complete data stream received: ${streamContent.length} bytes`);
+            try {
+              // Try to parse as JSON to validate
+              const jsonData = JSON.parse(streamContent);
+              console.log(`[MINIO] Successfully parsed JSON data`);
+              resolve(jsonData);
+            } catch (parseErr) {
+              console.error(`[MINIO] Error parsing JSON data: ${parseErr.message}`);
+              console.log(`[MINIO] First 100 chars of content: ${streamContent.substring(0, 100)}`);
+              // Return the raw content anyway
+              resolve(streamContent);
+            }
+          });
+        });
       } catch (error) {
         console.log(`[MINIO] Could not retrieve with ID: "${analysisId}", error: ${error.message}`);
         // Continue to the next ID
@@ -1533,11 +1619,11 @@ async function handleGetAnalysis(req, res) {
     
     // Get the analysis data from MinIO
     try {
-      const dataStream = await getAnalysisFromMinIO(fileId);
+      const analysisData = await getAnalysisFromMinIO(fileId);
       // Clear the timeout since we got a response
       clearTimeout(analysisTimeout);
       
-      if (!dataStream) {
+      if (!analysisData) {
         console.log(`[API] No analysis found for file ID: ${fileId}`);
         return res.end(JSON.stringify({
           success: false,
@@ -1546,47 +1632,35 @@ async function handleGetAnalysis(req, res) {
         }));
       }
       
-      // Process the data stream to get the analysis data
-      let analysisJson = '';
+      // Return the analysis data
+      console.log(`[API] Successfully retrieved analysis for file ID: ${fileId}`);
       
-      dataStream.on('data', chunk => {
-        analysisJson += chunk;
-      });
-      
-      dataStream.on('error', err => {
-        console.error(`[API] Error reading analysis stream: ${err.message}`);
-        return res.end(JSON.stringify({
-          success: false,
-          message: 'Error reading analysis data',
-          error: err.message
-        }));
-      });
-      
-      dataStream.on('end', () => {
+      // Check if it's already a parsed object or a string
+      let responseData;
+      if (typeof analysisData === 'string') {
         try {
-          // Parse the JSON data
-          const analysisData = JSON.parse(analysisJson);
-          
-          // Return the analysis data
-          console.log(`[API] Successfully retrieved analysis for file ID: ${fileId}`);
-          
-          // Format the response to match the expected format in the client
-          const response = {
-            success: true,
-            message: 'Analysis retrieved successfully',
-            data: analysisData
-          };
-          
-          return res.end(JSON.stringify(response));
+          // Try to parse it as JSON
+          responseData = JSON.parse(analysisData);
+          console.log(`[API] Parsed string response into JSON`);
         } catch (parseError) {
-          console.error(`[API] Error parsing analysis JSON: ${parseError.message}`);
-          return res.end(JSON.stringify({
-            success: false,
-            message: 'Error parsing analysis data',
-            error: parseError.message
-          }));
+          console.log(`[API] Unable to parse string as JSON, using as-is`);
+          // Use the string directly
+          responseData = { rawData: analysisData };
         }
-      });
+      } else {
+        // It's already a parsed object
+        responseData = analysisData;
+      }
+      
+      // Format the response to match the expected format in the client
+      const response = {
+        success: true,
+        message: 'Analysis retrieved successfully',
+        data: responseData
+      };
+      
+      console.log(`[API] Sending analysis response (${JSON.stringify(response).length} bytes)`);
+      return res.end(JSON.stringify(response));
     } catch (analysisError) {
       // Clear the timeout since we got an error
       clearTimeout(analysisTimeout);
