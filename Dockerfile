@@ -22,8 +22,8 @@ RUN echo '#!/bin/sh' > healthcheck.sh && \
 # Set environment variables
 ENV PORT=9000
 ENV NODE_ENV=production
-# Set Node.js to use maximum old space size to prevent memory issues
-ENV NODE_OPTIONS="--max-old-space-size=128 --expose-gc"
+# Set Node.js memory limit without the problematic flag
+ENV NODE_OPTIONS="--max-old-space-size=128"
 
 # Expose the port
 EXPOSE 9000

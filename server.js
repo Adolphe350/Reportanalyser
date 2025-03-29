@@ -1,93 +1,87 @@
+// Ultra-simplified server with minimal dependencies
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const port = process.env.PORT || 9000;
 
-// Pre-load the HTML file to avoid file system operations during requests
-let indexHtml;
-try {
-  console.log(`Loading index.html from ${path.join(__dirname, "public", "index.html")}`);
-  indexHtml = fs.readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
-  console.log(`Successfully loaded index.html (${indexHtml.length} bytes)`);
-} catch (err) {
-  console.error(`CRITICAL ERROR loading index.html: ${err.message}`);
-  // Create a simple fallback HTML if the file can't be loaded
-  indexHtml = `<!DOCTYPE html>
+// Startup logging
+console.log(`[STARTUP] Node.js ${process.version}`);
+console.log(`[STARTUP] Current directory: ${__dirname}`);
+console.log(`[STARTUP] Starting server on port ${port}`);
+
+// Minimal HTML content as fallback
+const fallbackHtml = `
+<!DOCTYPE html>
 <html>
 <head>
-  <title>AI Report Analyzer - Fallback</title>
+  <title>AI Report Analyzer</title>
   <style>
-    body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 20px; }
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
     h1 { color: #0066cc; }
-    .error { color: #cc0000; background: #ffeeee; padding: 10px; border-radius: 5px; }
+    .info { background: #f0f0f0; padding: 10px; border-radius: 5px; margin-top: 20px; }
   </style>
 </head>
 <body>
   <h1>AI Report Analyzer</h1>
-  <p>This is a fallback page. The server was unable to load the main page.</p>
-  <div class="error">Error: ${err?.message || "Unknown error"}</div>
-  <p>Server time: ${new Date().toISOString()}</p>
+  <p>Simple demo page served directly from memory.</p>
+  <div class="info">
+    <p>Server time: ${new Date().toISOString()}</p>
+    <p>Node.js: ${process.version}</p>
+  </div>
 </body>
-</html>`;
-  console.log("Created fallback HTML page");
-}
+</html>
+`;
 
-// Initialize the server
-console.log(`Starting server on port ${port}`);
-console.log(`Current directory: ${__dirname}`);
-
-// List all files in the public directory
+// Try to load HTML from file
+let indexHtml;
 try {
-  const files = fs.readdirSync(path.join(__dirname, "public"));
-  console.log(`Files in public directory: ${files.join(", ")}`);
+  const indexPath = path.join(__dirname, "public", "index.html");
+  console.log(`[STARTUP] Attempting to load index.html from ${indexPath}`);
+  
+  if (fs.existsSync(indexPath)) {
+    indexHtml = fs.readFileSync(indexPath, "utf8");
+    console.log(`[STARTUP] Successfully loaded index.html (${indexHtml.length} bytes)`);
+  } else {
+    console.log(`[STARTUP] index.html not found, using fallback`);
+    indexHtml = fallbackHtml;
+  }
 } catch (err) {
-  console.error(`Error reading public directory: ${err.message}`);
+  console.error(`[STARTUP] Error loading index.html: ${err.message}`);
+  indexHtml = fallbackHtml;
 }
 
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
-  const start = Date.now();
-  const timestamp = new Date().toISOString();
-  
   try {
-    console.log(`[${timestamp}] ${req.method} ${req.url}`);
-    
-    // Health check endpoint
+    // For health checks
     if (req.url === "/health" || req.url === "/api/health") {
-      console.log(`[${timestamp}] Serving health check`);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        status: "ok",
-        time: timestamp,
-        uptime: process.uptime()
-      }));
+      res.end(JSON.stringify({ status: "ok", time: new Date().toISOString() }));
       return;
     }
     
-    // Serve the pre-loaded HTML for all other requests
-    console.log(`[${timestamp}] Serving index.html (${indexHtml.length} bytes)`);
-    res.writeHead(200, { 
-      "Content-Type": "text/html",
-      "Cache-Control": "no-cache",
-      "X-Response-Time": `${Date.now() - start}ms`
-    });
+    // For all other requests, serve the HTML
+    res.writeHead(200, { "Content-Type": "text/html" });
     res.end(indexHtml);
-    console.log(`[${timestamp}] Response sent in ${Date.now() - start}ms`);
-    
-  } catch (error) {
-    console.error(`[${timestamp}] Server error: ${error.message}`);
-    res.writeHead(500, { "Content-Type": "text/plain" });
-    res.end(`Server Error: ${error.message}`);
+  } catch (err) {
+    console.error(`[ERROR] Request handler error: ${err.message}`);
+    res.writeHead(500);
+    res.end("Server Error");
   }
 });
 
-// Error handling for the server
-server.on("error", (err) => {
-  console.error(`CRITICAL: Server error: ${err.message}`);
+// Set a timeout handler
+server.setTimeout(10000, (socket) => {
+  console.log("[ERROR] Socket timeout");
+  socket.destroy();
 });
 
-// Start the server
+// Error handler
+server.on("error", (err) => {
+  console.error(`[ERROR] Server error: ${err.message}`);
+});
+
+// Start listening
 server.listen(port, "0.0.0.0", () => {
-  console.log(`READY: Server is running at http://0.0.0.0:${port}/`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`[READY] Server is running at http://0.0.0.0:${port}/`);
 }); 
