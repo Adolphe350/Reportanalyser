@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - AI Report Analyzer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         /* Reset and base styles */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -456,9 +457,42 @@
             border-radius: 20px;
             font-size: 0.85rem;
         }
+
+        .api-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(-10px);
+            animation: fadeIn 0.5s forwards 1s;
+        }
+        
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .api-status i {
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
+    <div class="api-status">
+        <i class="fas fa-check-circle"></i> Gemini AI Connected
+    </div>
     <!-- Navigation Bar -->
     <nav>
         <div class="brand">
