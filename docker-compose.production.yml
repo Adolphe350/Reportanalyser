@@ -10,7 +10,6 @@ services:
       # Define environment variables for Coolify to populate
       DATABASE_URL: ${DATABASE_URL}
       SECRET_KEY: ${SECRET_KEY}
-      PORT: 3005
     # NOTE: Don't define ports here as Coolify will handle this
     # The following labels are used by Coolify's proxy (Traefik)
     labels:
@@ -19,6 +18,4 @@ services:
       - traefik.http.routers.reportanalyser.entryPoints=http
       - "traefik.http.routers.reportanalyser-secure.rule=Host(`${HOST_DOMAIN}`)"
       - traefik.http.routers.reportanalyser-secure.entryPoints=https
-      - traefik.http.routers.reportanalyser-secure.tls=true
-      # Health check - Use a fixed port of 3005
-      - "traefik.http.services.reportanalyser.loadbalancer.server.port=3005" 
+      - traefik.http.routers.reportanalyser-secure.tls=true 
