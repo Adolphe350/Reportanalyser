@@ -8,8 +8,8 @@ RUN npm install
 
 COPY . .
 
-# Use the PORT environment variable or default to 3000
-ENV PORT=3000
+# Use a different port to avoid conflicts
+ENV PORT=8080
 EXPOSE ${PORT}
 
 CMD ["npm", "start"] 
