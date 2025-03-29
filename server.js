@@ -46,22 +46,126 @@ const fallbackHtml = `
 </html>
 `;
 
-// Try to load HTML from file
-let indexHtml;
+// Content type mapping
+const contentTypeMap = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain'
+};
+
+// Cache frequently used files
+const fileCache = {};
+const cacheableExtensions = ['.html', '.css', '.js'];
+
+// Preload index.html and dashboard.html
 try {
-  const indexPath = path.join(__dirname, "public", "index.html");
-  console.log(`[STARTUP] Attempting to load index.html from ${indexPath}`);
-  
-  if (fs.existsSync(indexPath)) {
-    indexHtml = fs.readFileSync(indexPath, "utf8");
-    console.log(`[STARTUP] Successfully loaded index.html (${indexHtml.length} bytes)`);
-  } else {
-    console.log(`[STARTUP] index.html not found, using fallback`);
-    indexHtml = fallbackHtml;
-  }
+  ['index.html', 'dashboard.html'].forEach(fileName => {
+    const filePath = path.join(__dirname, 'public', fileName);
+    console.log(`[STARTUP] Preloading ${fileName} from ${filePath}`);
+    
+    if (fs.existsSync(filePath)) {
+      fileCache[`/${fileName}`] = {
+        content: fs.readFileSync(filePath, 'utf8'),
+        contentType: 'text/html'
+      };
+      console.log(`[STARTUP] Successfully cached ${fileName} (${fileCache[`/${fileName}`].content.length} bytes)`);
+    } else {
+      console.log(`[STARTUP] ${fileName} not found, will serve dynamically if requested`);
+    }
+  });
 } catch (err) {
-  console.error(`[STARTUP] Error loading index.html: ${err.message}`);
-  indexHtml = fallbackHtml;
+  console.error(`[STARTUP] Error preloading files: ${err.message}`);
+}
+
+// Function to serve a file
+function serveFile(req, res, filePath) {
+  const start = Date.now();
+  const fileUrl = req.url === '/' ? '/index.html' : req.url;
+  const ext = path.extname(fileUrl).toLowerCase();
+  
+  // Check cache first for HTML, CSS and JS files
+  if (cacheableExtensions.includes(ext) && fileCache[fileUrl]) {
+    console.log(`[FILE] Serving ${fileUrl} from cache`);
+    res.writeHead(200, { 
+      'Content-Type': fileCache[fileUrl].contentType,
+      'Connection': 'close',
+      'X-Response-Time': `${Date.now() - start}ms`
+    });
+    res.end(fileCache[fileUrl].content);
+    console.log(`[REQUEST] Response completed in ${Date.now() - start}ms`);
+    return;
+  }
+  
+  // For other files, check if they exist
+  const localFilePath = path.join(__dirname, 'public', fileUrl === '/' ? 'index.html' : fileUrl.substring(1));
+  console.log(`[FILE] Checking for file at ${localFilePath}`);
+  
+  fs.stat(localFilePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      console.log(`[FILE] File not found: ${localFilePath}`);
+      
+      // If not found but is an HTML request, try to serve index.html
+      if (fileUrl.endsWith('.html') && fileCache['/index.html']) {
+        console.log(`[FILE] Serving index.html as fallback`);
+        res.writeHead(200, {
+          'Content-Type': 'text/html',
+          'Connection': 'close',
+          'X-Response-Time': `${Date.now() - start}ms`
+        });
+        res.end(fileCache['/index.html'].content);
+      } else {
+        // Serve 404
+        res.writeHead(404, { 
+          'Content-Type': 'text/plain',
+          'Connection': 'close'
+        });
+        res.end('File not found');
+      }
+      console.log(`[REQUEST] Response completed in ${Date.now() - start}ms`);
+      return;
+    }
+    
+    // Determine content type
+    const contentType = contentTypeMap[ext] || 'application/octet-stream';
+    
+    // Serve file
+    fs.readFile(localFilePath, (err, data) => {
+      if (err) {
+        console.error(`[ERROR] Error reading file: ${err.message}`);
+        res.writeHead(500, { 
+          'Content-Type': 'text/plain',
+          'Connection': 'close'
+        });
+        res.end('Internal Server Error');
+      } else {
+        console.log(`[FILE] Serving file: ${localFilePath} (${data.length} bytes)`);
+        
+        // Cache the file if it's cacheable
+        if (cacheableExtensions.includes(ext)) {
+          fileCache[fileUrl] = {
+            content: data.toString(),
+            contentType
+          };
+          console.log(`[FILE] Cached ${fileUrl} for future requests`);
+        }
+        
+        res.writeHead(200, { 
+          'Content-Type': contentType,
+          'Connection': 'close',
+          'X-Response-Time': `${Date.now() - start}ms`
+        });
+        res.end(data);
+      }
+      console.log(`[REQUEST] Response completed in ${Date.now() - start}ms`);
+    });
+  });
 }
 
 // Create a simple HTTP server
@@ -87,15 +191,9 @@ const server = http.createServer((req, res) => {
       return;
     }
     
-    // For all other requests, serve the HTML
-    console.log(`[REQUEST] Serving index.html`);
-    res.writeHead(200, { 
-      "Content-Type": "text/html",
-      "Connection": "close",
-      "X-Response-Time": `${Date.now() - start}ms` 
-    });
-    res.end(indexHtml);
-    console.log(`[REQUEST] Response completed in ${Date.now() - start}ms`);
+    // For static files
+    serveFile(req, res);
+    
   } catch (err) {
     console.error(`[ERROR] Request handler error: ${err.message}`);
     res.writeHead(500, { "Content-Type": "text/plain", "Connection": "close" });
@@ -117,7 +215,7 @@ server.on('connection', (socket) => {
 });
 
 // Set a timeout handler
-server.setTimeout(30000, (socket) => {
+server.setTimeout(60000, (socket) => {
   console.log(`[TIMEOUT] Socket timeout from ${socket.remoteAddress}`);
   socket.destroy();
 });
