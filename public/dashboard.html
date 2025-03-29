@@ -819,13 +819,32 @@
             // Add click handler for the New Analysis button
             if (newAnalysisButton && uploadButton) {
                 newAnalysisButton.addEventListener('click', function() {
-                    // Focus on the upload area
-                    uploadArea.scrollIntoView({ behavior: 'smooth' });
-                    
-                    // Trigger the upload button click
-                    setTimeout(() => {
-                        uploadButton.click();
-                    }, 300);
+                    // If we're in the analytics view, switch to dashboard view first
+                    if (currentView === 'analytics') {
+                        // Click the Dashboard link to switch to dashboard view
+                        const dashboardLink = document.querySelector('.sidebar-menu li:nth-child(1) a');
+                        if (dashboardLink) {
+                            dashboardLink.click();
+                        }
+                        
+                        // Set a small delay to ensure dashboard view is loaded
+                        setTimeout(() => {
+                            // Now focus on the upload area and trigger upload
+                            uploadArea.scrollIntoView({ behavior: 'smooth' });
+                            setTimeout(() => {
+                                uploadButton.click();
+                            }, 300);
+                        }, 300);
+                    } else {
+                        // We're already in dashboard or all reports view
+                        // Focus on the upload area
+                        uploadArea.scrollIntoView({ behavior: 'smooth' });
+                        
+                        // Trigger the upload button click
+                        setTimeout(() => {
+                            uploadButton.click();
+                        }, 300);
+                    }
                 });
             }
             
