@@ -48,11 +48,21 @@ let minioAvailable = false;
 
 // Try to initialize MinIO client
 try {
-  const minioEndpoint = process.env.MINIO_ENDPOINT;
+  // Try to read environment variables, with fallback values if not found
+  const minioEndpoint = process.env.MINIO_ENDPOINT || 'minio-uk0wsk4sw4o4kow40s8kc0wc.app.kimuse.rw';
   const minioPort = parseInt(process.env.MINIO_PORT || '443');
-  const minioUseSSL = process.env.MINIO_USE_SSL === 'true';
-  const minioAccessKey = process.env.MINIO_ACCESS_KEY;
-  const minioSecretKey = process.env.MINIO_SECRET_KEY;
+  const minioUseSSL = process.env.MINIO_USE_SSL === 'true' || true;
+  const minioAccessKey = process.env.MINIO_ACCESS_KEY || 'CKaDxWb6gmINhYeuj58T';
+  const minioSecretKey = process.env.MINIO_SECRET_KEY || '8WtOaHAOn9oqLgW4JXJTFGNxTLFvCRvGfRhvNvRQ';
+  
+  console.log(`[MINIO] Debug - Configuration values:
+    Endpoint: ${minioEndpoint}
+    Port: ${minioPort}
+    UseSSL: ${minioUseSSL}
+    AccessKey: ${minioAccessKey ? minioAccessKey.substring(0, 5) + '...' : 'undefined'}
+    SecretKey: ${minioSecretKey ? '******' : 'undefined'}
+    Bucket: ${minioBucket}
+  `);
   
   if (minioEndpoint && minioAccessKey && minioSecretKey) {
     console.log(`[STARTUP] MinIO configuration found, initializing client for ${minioEndpoint}`);
@@ -65,10 +75,11 @@ try {
       secretKey: minioSecretKey
     });
     
-    console.log(`[STARTUP] MinIO client initialized successfully`);
+    console.log(`[STARTUP] MinIO client initialized successfully with endpoint ${minioClient.host}`);
     minioAvailable = true;
   } else {
     console.log(`[STARTUP] MinIO configuration incomplete, storage will use local filesystem`);
+    console.log(`[STARTUP] Missing MinIO parameters: ${!minioEndpoint ? 'endpoint ' : ''}${!minioAccessKey ? 'accessKey ' : ''}${!minioSecretKey ? 'secretKey' : ''}`);
   }
 } catch (err) {
   console.error(`[STARTUP] Error initializing MinIO client: ${err.message}`);
@@ -139,38 +150,69 @@ async function uploadFileToMinIO(fileBuffer, fileName, contentType) {
   
   try {
     // Ensure the bucket exists
+    console.log(`[MINIO] Ensuring bucket '${minioBucket}' exists before upload...`);
     const bucketReady = await ensureMinIOBucket();
     if (!bucketReady) {
-      throw new Error('Bucket not ready');
+      throw new Error(`Failed to ensure bucket '${minioBucket}' exists`);
     }
     
     // Create a unique object name by adding timestamp
     const objectName = `${Date.now()}-${fileName}`;
     
-    console.log(`[MINIO] Uploading ${fileName} to bucket '${minioBucket}' as ${objectName}`);
+    console.log(`[MINIO] Uploading ${fileName} to bucket '${minioBucket}' as ${objectName} (${fileBuffer.length} bytes)`);
     
-    // Upload the file
-    await minioClient.putObject(minioBucket, objectName, fileBuffer, fileBuffer.length, {
-      'Content-Type': contentType
-    });
-    
-    console.log(`[MINIO] File uploaded successfully to MinIO bucket '${minioBucket}'`);
-    
-    // Generate URL for the uploaded file
-    const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + objectName;
-    
-    // Log more details about the uploaded file for verification
-    console.log(`[MINIO] File URL: ${fileUrl}`);
-    console.log(`[MINIO] Object storage details: Bucket=${minioBucket}, Object=${objectName}, Size=${fileBuffer.length} bytes`);
-    
-    return {
-      bucket: minioBucket,
-      objectName: objectName,
-      url: fileUrl,
-      size: fileBuffer.length
-    };
+    try {
+      // Upload the file
+      await minioClient.putObject(minioBucket, objectName, fileBuffer, fileBuffer.length, {
+        'Content-Type': contentType
+      });
+      
+      console.log(`[MINIO] File uploaded successfully to MinIO bucket '${minioBucket}'`);
+      
+      // Generate URL for the uploaded file
+      const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + objectName;
+      
+      // Log more details about the uploaded file for verification
+      console.log(`[MINIO] File URL: ${fileUrl}`);
+      console.log(`[MINIO] Object storage details: Bucket=${minioBucket}, Object=${objectName}, Size=${fileBuffer.length} bytes`);
+      
+      // Verify the object exists
+      try {
+        const stat = await minioClient.statObject(minioBucket, objectName);
+        console.log(`[MINIO] Verified object exists: Size=${stat.size}, LastModified=${stat.lastModified}`);
+      } catch (statErr) {
+        console.warn(`[MINIO] Warning: Could not verify object after upload: ${statErr.message}`);
+      }
+      
+      return {
+        bucket: minioBucket,
+        objectName: objectName,
+        url: fileUrl,
+        size: fileBuffer.length
+      };
+    } catch (uploadErr) {
+      console.error(`[MINIO] Error during file upload operation: ${uploadErr.message}`);
+      
+      if (uploadErr.code === 'AccessDenied') {
+        console.error(`[MINIO] Access denied - Check your MinIO permissions and credentials`);
+      } else if (uploadErr.code === 'NoSuchBucket') {
+        console.error(`[MINIO] Bucket '${minioBucket}' not found despite creation attempt`);
+      } else if (uploadErr.code === 'ConnectionClosed' || uploadErr.code === 'ConnectTimeoutError') {
+        console.error(`[MINIO] Connection issue - Check network and MinIO endpoint configuration`);
+      }
+      
+      throw uploadErr;
+    }
   } catch (err) {
     console.error(`[MINIO] Error uploading file to MinIO bucket '${minioBucket}': ${err.message}`);
+    console.error(`[MINIO] Error details: ${err.stack}`);
+    
+    // Try to reconnect to MinIO in case of connection issues
+    if (err.code === 'ConnectionClosed' || err.code === 'ConnectTimeoutError') {
+      console.log(`[MINIO] Attempting to reconnect to MinIO server...`);
+      await testMinIOConnection();
+    }
+    
     return null;
   }
 }
@@ -1009,13 +1051,91 @@ initPdfLib().then(success => {
   console.error(`[STARTUP] Error initializing PDF.js: ${err.message}`);
 });
 
-// Ensure MinIO bucket exists if MinIO is available
+// Test MinIO connection
 if (minioAvailable) {
-  ensureMinIOBucket().then(success => {
-    console.log(`[STARTUP] MinIO bucket check complete: ${success ? 'Success' : 'Failed'}`);
+  console.log(`[STARTUP] Testing MinIO connection...`);
+  testMinIOConnection().then(success => {
+    console.log(`[STARTUP] MinIO connection test: ${success ? 'Success' : 'Failed'}`);
+    
+    if (success) {
+      console.log(`[STARTUP] MinIO storage is properly configured and working!`);
+    } else {
+      console.log(`[STARTUP] MinIO connection failed or bucket doesn't exist yet.`);
+      console.log(`[STARTUP] Will try to ensure bucket exists...`);
+      
+      // Try to create the bucket if it doesn't exist
+      ensureMinIOBucket().then(bucketSuccess => {
+        console.log(`[STARTUP] MinIO bucket check complete: ${bucketSuccess ? 'Success' : 'Failed'}`);
+      }).catch(err => {
+        console.error(`[STARTUP] Error checking MinIO bucket: ${err.message}`);
+      });
+    }
   }).catch(err => {
-    console.error(`[STARTUP] Error checking MinIO bucket: ${err.message}`);
+    console.error(`[STARTUP] Error during MinIO connection test: ${err.message}`);
   });
+} else {
+  console.log(`[STARTUP] MinIO is not available, skipping connection test`);
+}
+
+// Test connection to MinIO
+async function testMinIOConnection() {
+  if (!minioAvailable || !minioClient) {
+    console.log(`[MINIO] Test connection skipped - MinIO not available`);
+    return false;
+  }
+  
+  try {
+    console.log(`[MINIO] Testing connection to MinIO server at ${minioClient.host}:${minioClient.port}...`);
+    
+    // List buckets as a basic connectivity test
+    const buckets = await minioClient.listBuckets();
+    console.log(`[MINIO] Connection successful! Found ${buckets.length} buckets: ${buckets.map(b => b.name).join(', ')}`);
+    
+    // Check if our target bucket exists
+    console.log(`[MINIO] Checking if bucket '${minioBucket}' exists...`);
+    const bucketExists = await minioClient.bucketExists(minioBucket);
+    if (bucketExists) {
+      console.log(`[MINIO] Target bucket '${minioBucket}' exists and is accessible.`);
+      
+      // Try listing a few objects to confirm read access
+      try {
+        const objects = await new Promise((resolve, reject) => {
+          const objectsList = [];
+          const stream = minioClient.listObjects(minioBucket, '', true);
+          
+          stream.on('data', (obj) => {
+            objectsList.push(obj.name);
+            if (objectsList.length >= 5) stream.destroy(); // Limit to first 5 objects
+          });
+          
+          stream.on('error', (err) => {
+            reject(err);
+          });
+          
+          stream.on('end', () => {
+            resolve(objectsList);
+          });
+        });
+        
+        if (objects.length > 0) {
+          console.log(`[MINIO] Successfully listed ${objects.length} objects in bucket '${minioBucket}': ${objects.join(', ')}`);
+        } else {
+          console.log(`[MINIO] Bucket '${minioBucket}' exists but is empty.`);
+        }
+      } catch (listErr) {
+        console.error(`[MINIO] Error listing objects in bucket: ${listErr.message}`);
+      }
+      
+      return true;
+    } else {
+      console.log(`[MINIO] Target bucket '${minioBucket}' does not exist yet. Will try to create it when needed.`);
+      return false;
+    }
+  } catch (err) {
+    console.error(`[MINIO] Connection test failed: ${err.message}`);
+    console.error(`[MINIO] Error details: ${err.stack}`);
+    return false;
+  }
 }
 
 // Start listening
