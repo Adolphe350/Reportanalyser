@@ -749,6 +749,9 @@
                         Analyzed: <span id="file-name">report.pdf</span> (<span id="file-size">1.2 MB</span>)
                     </div>
                     
+                    <h3>Document Summary</h3>
+                    <div id="document-summary" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.5;"></div>
+                    
                     <h3>Key Insights</h3>
                     <div id="insights-container"></div>
                     
@@ -1037,6 +1040,14 @@
                     document.querySelector('.file-info').innerHTML += storageInfoHtml;
                 }
                 
+                // Update document summary
+                const summaryContainer = document.getElementById('document-summary');
+                if (response.analysis.summary) {
+                    summaryContainer.textContent = response.analysis.summary;
+                } else {
+                    summaryContainer.textContent = 'No summary available for this document.';
+                }
+                
                 // Update insights
                 const insightsContainer = document.getElementById('insights-container');
                 insightsContainer.innerHTML = '';
@@ -1165,6 +1176,9 @@
                                 </div>
                             </div>
                             
+                            <h3>Document Summary</h3>
+                            <div id="document-summary" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.5;"></div>
+                            
                             <h3>Key Insights</h3>
                             <div id="insights-container"></div>
                             
@@ -1178,6 +1192,14 @@
                                 <ul id="recommendations-list"></ul>
                             </div>
                         `;
+                        
+                        // Update document summary
+                        const summaryContainer = document.getElementById('document-summary');
+                        if (analysisData.analysis.summary) {
+                            summaryContainer.textContent = analysisData.analysis.summary;
+                        } else {
+                            summaryContainer.textContent = 'No summary available for this document.';
+                        }
                         
                         // Update insights
                         const insightsContainer = document.getElementById('insights-container');

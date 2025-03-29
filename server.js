@@ -17,25 +17,50 @@ let pdfjsLib = null;
 const initPdfLib = async () => {
   try {
     console.log(`[PDF] Dynamically importing PDF.js library`);
-    // Try different paths based on what might be available in the installed package
+    
+    // Try loading from the legacy path
     try {
-      pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.js');
+      pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
       console.log(`[PDF] PDF.js library loaded successfully via legacy path`);
-    } catch (e) {
-      console.log(`[PDF] Legacy path failed, trying alternative paths`);
+    } catch (legacyErr) {
+      console.log(`[PDF] Error loading legacy path: ${legacyErr.message}`);
       try {
-        pdfjsLib = await import('pdfjs-dist/build/pdf.js');
-      } catch (e2) {
-        pdfjsLib = await import('pdfjs-dist');
+        // Try loading from the modern path
+        pdfjsLib = require('pdfjs-dist/build/pdf.js');
+        console.log(`[PDF] PDF.js library loaded successfully via modern path`);
+      } catch (modernErr) {
+        console.error(`[PDF] Error loading modern path: ${modernErr.message}`);
+        try {
+          // Try one more path as a fallback
+          pdfjsLib = require('pdfjs-dist');
+          console.log(`[PDF] PDF.js library loaded successfully via root path`);
+        } catch (rootErr) {
+          console.error(`[PDF] Error loading root path: ${rootErr.message}`);
+          throw new Error(`Could not load PDF.js library from any path`);
+        }
       }
     }
     
-    // Set the worker source to null to use the main thread
-    pdfjsLib.GlobalWorkerOptions.workerSrc = null;
-    console.log(`[PDF] PDF.js worker initialized to use main thread`);
-    return true;
+    // Set up the PDF.js worker
+    try {
+      if (pdfjsLib.GlobalWorkerOptions) {
+        // Try to use the worker from the same path
+        const workerPath = require.resolve('pdfjs-dist/build/pdf.worker.js');
+        console.log(`[PDF] Setting worker path to: ${workerPath}`);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+      } else {
+        // Fallback to running without worker
+        console.log(`[PDF] GlobalWorkerOptions not available, running in no-worker mode`);
+      }
+      
+      return true;
+    } catch (workerErr) {
+      console.error(`[PDF] Error loading PDF.js: ${workerErr.message}`);
+      return false;
+    }
   } catch (err) {
-    console.error(`[PDF] Error loading PDF.js: ${err.message}`);
+    console.error(`[PDF] Error loading PDF.js library: ${err.message}`);
+    console.error(err.stack);
     return false;
   }
 };
@@ -244,7 +269,8 @@ try {
   if (apiKey) {
     console.log(`[STARTUP] Gemini API key found (${apiKey.substring(0, 5)}...), initializing AI`);
     genAI = new GoogleGenerativeAI(apiKey);
-    geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Updated to use the correct model name for the current API version
+    geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
     geminiAvailable = true;
     console.log(`[STARTUP] Gemini AI initialized successfully`);
   } else {
@@ -359,39 +385,63 @@ async function analyzeDocumentWithGemini(text, fileName) {
   if (!geminiAvailable || !geminiModel) {
     console.log(`[AI] Gemini is not available, using simulation mode`);
     console.log(`[AI] geminiAvailable: ${geminiAvailable}, geminiModel: ${geminiModel ? 'defined' : 'undefined'}`);
-    return getSimulatedAnalysisResults(fileName);
+    return getSimulatedAnalysisResults(fileName, text);
   }
   
   try {
     console.log(`[AI] Preparing to analyze document text (${text.length} chars)`);
     
-    // Create a prompt for the Gemini AI model
+    // Create a more detailed and effective prompt for the Gemini AI model
     const prompt = `
-You are an expert document and report analyzer. I need you to thoroughly analyze the following document text and extract meaningful insights.
-The document is named: "${fileName}"
+You are an expert document and report analyzer with expertise in multiple domains. I need you to thoroughly analyze the following document and provide a comprehensive assessment.
 
-Analyze the content for:
-1. Key insights about the business, market, or subject of the document
-2. Important metrics or data points mentioned
-3. Main topics and themes
-4. Actionable recommendations based on the content
+Document name: "${fileName}"
 
-The results should be provided in JSON format with the following structure:
+DOCUMENT TEXT TO ANALYZE:
+${text.substring(0, 15000)} 
+${text.length > 15000 ? '... (text truncated for size)' : ''}
+
+ANALYSIS INSTRUCTIONS:
+1. First determine if the document text appears to be readable content or if it appears to be binary/corrupted content. 
+   If it's binary/corrupted, indicate this in your summary and do your best with what you can interpret.
+
+2. Create a concise 1-2 paragraph summary of the document's main content and purpose.
+
+3. Extract 5-6 key insights from the document that represent the most important information.
+
+4. Identify the main themes, topics, and subject areas of the document.
+
+5. Assess the sentiment of the document (positive, negative, neutral) and provide a confidence score.
+
+6. Provide 3-5 specific, actionable recommendations based on the document content.
+
+7. Note any important metrics, data points, or statistics mentioned in the document.
+
+FORMAT YOUR RESPONSE AS STRUCTURED JSON with the following format:
 {
-  "keyInsights": [array of 4-6 specific key insights extracted from the document],
+  "summary": "1-2 paragraph summary of the document's content and purpose",
+  "keyInsights": [
+    "First key insight from the document",
+    "Second key insight from the document",
+    etc.
+  ],
   "metrics": {
     "sentiment": number between 0 and 1 representing sentiment score (higher is more positive),
-    "confidence": number between 0 and 1 representing confidence in analysis,
-    "topics": [array of 3-5 main topics/themes identified in the document]
+    "confidence": number between 0.7 and 1 representing confidence in analysis,
+    "topics": [
+      "First main topic/theme",
+      "Second main topic/theme",
+      etc.
+    ]
   },
-  "recommendations": [array of 3-5 specific actionable recommendations based on the document content]
+  "recommendations": [
+    "First specific recommendation based on the document",
+    "Second specific recommendation based on the document",
+    etc.
+  ]
 }
 
-Document text to analyze:
-${text.substring(0, 10000)} 
-${text.length > 10000 ? '... (text truncated for size)' : ''}
-
-Analyze this document and return only the JSON, nothing else. The analysis should be specific to this document, not generic.
+IMPORTANT: Return ONLY the JSON object as your response, nothing else. Do not include explanation text, formatting, or markdown.
 `;
 
     console.log(`[AI] Creating Gemini request with prompt length: ${prompt.length}`);
@@ -400,7 +450,7 @@ Analyze this document and return only the JSON, nothing else. The analysis shoul
     // Make the API call with timeout handling
     const startTime = Date.now();
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Gemini API request timed out after 20 seconds')), 20000)
+      setTimeout(() => reject(new Error('Gemini API request timed out after 30 seconds')), 30000)
     );
     
     // Create the Gemini request
@@ -432,72 +482,127 @@ Analyze this document and return only the JSON, nothing else. The analysis shoul
       } else {
         console.error(`[AI] Could not find JSON in response`);
         console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
-        return getSimulatedAnalysisResults(fileName);
+        return getSimulatedAnalysisResults(fileName, text);
       }
     } catch (parseError) {
       console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
       console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
-      return getSimulatedAnalysisResults(fileName);
+      return getSimulatedAnalysisResults(fileName, text);
     }
   } catch (err) {
     console.error(`[AI] Error in Gemini analysis: ${err.message}`);
     console.error(`[AI] Error stack: ${err.stack}`);
-    return getSimulatedAnalysisResults(fileName);
+    return getSimulatedAnalysisResults(fileName, text);
   }
 }
 
 // Get simulated analysis results as fallback
-function getSimulatedAnalysisResults(fileName) {
+async function getSimulatedAnalysisResults(fileName, documentText = '') {
   console.log(`[AI] Using simulated analysis results for ${fileName || 'unknown file'}`);
   
-  // If we have a filename, create more tailored simulated results
-  if (fileName) {
-    // Get the filename without extension to use in results
-    const fileBaseName = path.basename(fileName, path.extname(fileName));
+  // Extract some real content from the document for a summary
+  let documentSummary = '';
+  let keyTopics = [];
+  let keyInsights = [];
+  
+  if (documentText && documentText.length > 0) {
+    console.log(`[AI] Generating analysis based on actual document content (${documentText.length} chars)`);
     
-    return {
-      keyInsights: [
-        `${fileBaseName} shows growth opportunities in emerging markets`,
-        `Customer satisfaction metrics increased by 23% following new service protocols`,
-        `Digital transformation has reduced operational costs by 15%`,
-        `Competitor analysis reveals potential for strategic acquisitions`,
-        `Sustainability initiatives demonstrate positive ROI and brand perception impact`
-      ],
-      metrics: {
-        sentiment: 0.82,
-        confidence: 0.94,
-        topics: ['market growth', 'customer experience', 'digital transformation', 'competitive analysis', 'sustainability']
-      },
-      recommendations: [
-        `Allocate marketing resources to high-growth regions identified in ${fileBaseName}`,
-        'Implement real-time customer feedback mechanisms across all channels',
-        'Evaluate automation opportunities in fulfillment and distribution',
-        'Pursue strategic partnerships with complementary service providers',
-        'Develop comprehensive sustainability metrics for quarterly reporting'
-      ]
-    };
+    // Extract the first few paragraphs for a summary (up to 500 chars)
+    documentSummary = documentText.substring(0, 2000)
+      .split('\n')
+      .filter(line => line.trim().length > 30) // Only meaningful paragraphs
+      .slice(0, 3)
+      .join('\n\n')
+      .substring(0, 500)
+      .trim();
+    
+    if (documentSummary.length === 0) {
+      // If no good paragraphs found, just use the first 500 chars
+      documentSummary = documentText.substring(0, 500).trim();
+    }
+    
+    console.log(`[AI] Generated document summary: ${documentSummary.substring(0, 100)}...`);
+    
+    // Extract potential topics based on word frequency
+    const words = documentText.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 4 && !['about', 'after', 'again', 'below', 'could', 'every', 'first', 'found', 'great', 'other', 'since', 'sound', 'still', 'their', 'there', 'these', 'thing', 'think', 'those', 'where', 'which', 'would'].includes(word));
+    
+    // Count word frequency
+    const wordCounts = {};
+    words.forEach(word => {
+      wordCounts[word] = (wordCounts[word] || 0) + 1;
+    });
+    
+    // Get top words as topics
+    keyTopics = Object.entries(wordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(entry => entry[0]);
+      
+    console.log(`[AI] Extracted key topics: ${keyTopics.join(', ')}`);
+    
+    // Generate insights based on document content and key topics
+    if (keyTopics.length > 0) {
+      // Create insights based on identified topics
+      keyTopics.forEach((topic, index) => {
+        if (index < 3) { // Generate insights for top 3 topics
+          keyInsights.push(`The document emphasizes ${topic} as a key area of focus.`);
+        }
+      });
+    }
+    
+    // Add generic but useful insights based on document length and structure
+    const paragraphCount = documentText.split('\n\n').filter(p => p.trim().length > 0).length;
+    keyInsights.push(`The document contains approximately ${paragraphCount} paragraphs of content.`);
+    
+    if (documentText.toLowerCase().includes('table') || documentText.includes('|')) {
+      keyInsights.push('The document includes tabular data that may contain important metrics or comparison information.');
+    }
+    
+    if (documentText.match(/\d{4}/g)) {
+      keyInsights.push('The document references specific years, indicating historical data or timeline information is present.');
+    }
+    
+    if (documentText.match(/\d+\.\d+/g)) {
+      keyInsights.push('The document contains numerical data points which may represent important metrics or financial information.');
+    }
   }
   
-  // Default simulated results if no filename provided
+  // Use extracted insights or fall back to defaults
+  if (keyInsights.length === 0) {
+    // Get the filename without extension to use in results
+    const fileBaseName = path.basename(fileName || 'document', path.extname(fileName || '.pdf'));
+    
+    keyInsights = [
+      `${fileBaseName} appears to cover multiple business or organizational topics`,
+      `The document structure suggests it may contain important information for decision-making`,
+      `Several sections may require further detailed analysis`,
+      `Review recommended for complete understanding of the document's implications`
+    ];
+  }
+  
+  // If no topics were extracted, use default ones
+  if (keyTopics.length === 0) {
+    keyTopics = ['content', 'analysis', 'documentation', 'review', 'information'];
+  }
+  
   return {
-    keyInsights: [
-      'Multiple growth opportunities identified in emerging markets',
-      'Customer satisfaction metrics increased by 18% year-over-year',
-      'Operational efficiency improvements suggested for manufacturing division',
-      'Competitor analysis reveals potential for market share expansion',
-      'Sustainability initiatives show positive ROI across business units'
-    ],
+    summary: documentSummary || 'No readable summary could be extracted from this document.',
+    keyInsights: keyInsights,
     metrics: {
-      sentiment: 0.78,
-      confidence: 0.92,
-      topics: ['growth', 'customer experience', 'operational efficiency', 'market analysis', 'sustainability']
+      sentiment: 0.65,
+      confidence: 0.78,
+      topics: keyTopics
     },
     recommendations: [
-      'Allocate additional resources to emerging market expansion',
-      'Implement customer feedback program across all service channels',
-      'Review manufacturing processes for potential automation improvements',
-      'Consider strategic partnerships in complementary market segments',
-      'Expand sustainability initiatives to additional product lines'
+      'Review the document in detail to validate extracted information',
+      'Consider using more advanced analysis tools for deeper content extraction',
+      'Compare the document with related materials to establish context',
+      'Follow up on key topics identified in the analysis',
+      'Share this document with relevant team members for additional perspectives'
     ]
   };
 }
@@ -562,43 +667,123 @@ async function extractTextFromPDF(pdfBuffer) {
     // Fallback method to extract at least some text from PDF
     try {
       console.log(`[PDF] Using fallback text extraction method`);
-      // Basic text extraction by looking for text patterns in the PDF
-      const textChunks = [];
-      for (let i = 0; i < pdfBuffer.length - 6; i++) {
-        // Look for text between parentheses, a common text encoding in PDFs
-        if (pdfBuffer[i] === 40) { // '('
-          let text = '';
-          let j = i + 1;
-          let depth = 1;
-          
-          while (j < pdfBuffer.length && depth > 0 && text.length < 1000) {
-            if (pdfBuffer[j] === 40) depth++; // Nested '('
-            else if (pdfBuffer[j] === 41) depth--; // ')'
-            
-            if (depth > 0 && pdfBuffer[j] >= 32 && pdfBuffer[j] <= 126) { // printable ASCII
-              text += String.fromCharCode(pdfBuffer[j]);
-            }
-            j++;
+      
+      // Look for text patterns in the PDF
+      let extractedText = '';
+      let foundTextChunks = [];
+      
+      // First look for common text markers in PDFs
+      const textMarkers = ['/Text', '/Contents', '/Title', '/Author', '/Subject', '/Keywords'];
+      const reTextAfterMarker = /\/Text\s*\(([^)]+)\)/g;
+      const reContentsStream = /stream([\s\S]*?)endstream/g;
+      const rePlainText = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
+      
+      // Convert buffer to string for easier regex
+      const pdfStr = pdfBuffer.toString('latin1');
+      
+      // Extract text from content streams
+      let contentMatch;
+      while ((contentMatch = reContentsStream.exec(pdfStr)) !== null) {
+        const streamContent = contentMatch[1];
+        let textMatch;
+        while ((textMatch = rePlainText.exec(streamContent)) !== null) {
+          if (textMatch[1].length > 3) { // Only consider strings with substantial content
+            foundTextChunks.push(textMatch[1]);
           }
-          
-          if (text.length > 3) { // Only keep substantial text
-            // Remove common PDF control sequences
-            text = text.replace(/\\(\d{3}|n|r|t|b|f|\\|\(|\))/g, ' ');
-            textChunks.push(text);
-          }
-          i = j;
         }
       }
       
-      // Join the chunks and limit the size
-      const fallbackText = textChunks
-        .filter(chunk => /[a-zA-Z]{3,}/.test(chunk)) // Only chunks with actual words
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .substring(0, 5000);
+      // Extract any plain text
+      let textMatch;
+      while ((textMatch = rePlainText.exec(pdfStr)) !== null) {
+        if (textMatch[1].length > 3) {
+          foundTextChunks.push(textMatch[1]);
+        }
+      }
       
-      console.log(`[PDF] Fallback extraction found ${textChunks.length} text chunks`);
-      return `[PDF text extraction fallback mode - partial content]:\n\n${fallbackText}`;
+      // Try to parse text content from binary format
+      for (let i = 0; i < pdfBuffer.length - 30; i++) {
+        // Look for ASCII text sequences
+        if (pdfBuffer[i] >= 32 && pdfBuffer[i] <= 126) {
+          let textChunk = '';
+          let j = i;
+          
+          // Collect printable ASCII characters
+          while (j < pdfBuffer.length && j < i + 300 && 
+                 ((pdfBuffer[j] >= 32 && pdfBuffer[j] <= 126) || 
+                  pdfBuffer[j] === 9 || pdfBuffer[j] === 10 || pdfBuffer[j] === 13)) {
+            textChunk += String.fromCharCode(pdfBuffer[j]);
+            j++;
+          }
+          
+          // Only keep chunks with substantial content and that look like text
+          if (textChunk.length > 20 && /[a-zA-Z]{3,}/.test(textChunk)) {
+            foundTextChunks.push(textChunk);
+            i = j - 1; // Skip ahead to end of chunk
+          }
+        }
+      }
+      
+      // Use an alternative approach to find potential readable text blocks
+      const chunkSize = 512;
+      for (let i = 0; i < pdfBuffer.length; i += chunkSize) {
+        const chunk = pdfBuffer.slice(i, i + chunkSize);
+        let readableText = '';
+        
+        for (let j = 0; j < chunk.length; j++) {
+          const byte = chunk[j];
+          if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13) {
+            readableText += String.fromCharCode(byte);
+          } else {
+            if (readableText.length > 20 && /[a-zA-Z]{3,}/.test(readableText)) {
+              foundTextChunks.push(readableText);
+            }
+            readableText = '';
+          }
+        }
+        
+        if (readableText.length > 20 && /[a-zA-Z]{3,}/.test(readableText)) {
+          foundTextChunks.push(readableText);
+        }
+      }
+      
+      // Filter the text chunks to remove duplicates and garbage
+      foundTextChunks = [...new Set(foundTextChunks)]; // Remove duplicates
+      
+      // Filter out binary-looking and non-meaningful strings
+      foundTextChunks = foundTextChunks.filter(chunk => {
+        // Filter out chunks that look like binary data
+        const binaryCharCount = (chunk.match(/[^\x20-\x7E\n\r\t]/g) || []).length;
+        const binaryRatio = binaryCharCount / chunk.length;
+        
+        // Skip if too many non-printable characters
+        if (binaryRatio > 0.2) return false;
+        
+        // Skip if doesn't contain alphabetic characters
+        if (!chunk.match(/[a-zA-Z]{3,}/)) return false;
+        
+        // Skip if contains too many special characters
+        const specialCharCount = (chunk.match(/[^a-zA-Z0-9\s.,;:'"!?()-]/g) || []).length;
+        if (specialCharCount / chunk.length > 0.3) return false;
+        
+        return true;
+      });
+      
+      console.log(`[PDF] Fallback extraction found ${foundTextChunks.length} text chunks`);
+      
+      // Sort chunks by length (longer chunks are more likely to be meaningful text)
+      foundTextChunks.sort((a, b) => b.length - a.length);
+      
+      // Join the top chunks
+      extractedText = foundTextChunks.slice(0, 50).join('\n\n');
+      
+      if (extractedText.length > 0) {
+        console.log(`[PDF] Extracted ${extractedText.length} characters using fallback method`);
+        return `[PDF Content (extracted using fallback method)]:\n\n${extractedText}`;
+      } else {
+        console.log(`[PDF] Fallback extraction could not find readable text`);
+        return `[Unable to extract readable text from PDF. The file may be scanned, image-based, or encrypted.]`;
+      }
     } catch (fallbackErr) {
       console.error(`[PDF] Fallback extraction also failed: ${fallbackErr.message}`);
       return `Could not extract text from PDF file due to errors.`;
