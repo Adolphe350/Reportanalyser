@@ -1,8 +1,8 @@
 {
-  "port": 8080,
+  "port": 9000,
   "buildPack": "docker",
   "dockerComposeFile": "docker-compose.production.yml",
   "publishDirectory": "",
-  "publishPort": 8080,
-  "publishPorts": ["8080:8080"]
+  "publishPort": 9000,
+  "publishPorts": ["9000:9000"]
 } 

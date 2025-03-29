@@ -8,8 +8,8 @@ RUN npm install
 
 COPY . .
 
-# Set a different port to avoid port 3000
-ENV PORT=8080
-EXPOSE 8080
+# Set a different port to avoid conflicts
+ENV PORT=9000
+EXPOSE 9000
 
 CMD ["npm", "start"] 
