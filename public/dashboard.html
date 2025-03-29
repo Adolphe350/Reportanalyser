@@ -822,14 +822,32 @@
                 console.log('Loading recent documents...');
                 documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
                 
+                // Add timeout for fetch operation
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                
                 // Fetch documents from the API
-                fetch('/api/files')
-                    .then(response => response.json())
+                fetch('/api/files', {
+                    signal: controller.signal
+                })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
                         console.log('Documents retrieved:', data);
-                        displayDocumentsList(data.files || []);
+                        if (data && data.files) {
+                            displayDocumentsList(data.files || []);
+                        } else {
+                            console.warn('API response missing files array:', data);
+                            displayDocumentsList([]);
+                        }
                     })
                     .catch(error => {
+                        clearTimeout(timeoutId);
                         console.error('Error loading documents:', error);
                         documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
                     });
@@ -968,6 +986,14 @@
                 // Create and configure XMLHttpRequest
                 const xhr = new XMLHttpRequest();
                 
+                // Set a timeout for the upload
+                const uploadTimeout = setTimeout(() => {
+                    console.error('Upload timed out after 60 seconds');
+                    xhr.abort();
+                    alert('Upload timed out. Please try again with a smaller file or check your connection.');
+                    resetUploadArea();
+                }, 60000); // 60 second timeout
+                
                 // Upload progress handler
                 xhr.upload.addEventListener('progress', function(e) {
                     if (e.lengthComputable) {
@@ -979,6 +1005,8 @@
                 
                 // Upload complete handler
                 xhr.addEventListener('load', function() {
+                    clearTimeout(uploadTimeout);
+                    
                     if (xhr.status >= 200 && xhr.status < 300) {
                         progressText.textContent = 'Processing file...';
                         
@@ -1002,8 +1030,16 @@
                 
                 // Error handler
                 xhr.addEventListener('error', function() {
+                    clearTimeout(uploadTimeout);
                     console.error('Upload request failed');
                     alert('Upload failed. Please check your connection and try again.');
+                    resetUploadArea();
+                });
+                
+                // Abort handler
+                xhr.addEventListener('abort', function() {
+                    clearTimeout(uploadTimeout);
+                    console.error('Upload aborted');
                     resetUploadArea();
                 });
                 

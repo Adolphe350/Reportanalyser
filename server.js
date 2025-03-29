@@ -1175,26 +1175,26 @@ function handleFileUpload(req, res) {
 async function listFilesFromMinIO() {
   if (!minioAvailable || !minioClient) {
     console.log(`[MINIO] MinIO not available, cannot list files`);
-    return null;
+    return [];
   }
   
   try {
-    // Ensure the bucket exists
-    console.log(`[MINIO] Checking bucket '${minioBucket}' before listing files...`);
-    const bucketReady = await ensureMinIOBucket();
-    if (!bucketReady) {
-      throw new Error(`Failed to ensure bucket '${minioBucket}' exists`);
-    }
+    // Add timeout handling to ensure this operation doesn't hang indefinitely
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Timed out retrieving files from MinIO')), 15000); // 15 second timeout
+    });
     
-    console.log(`[MINIO] Listing files from bucket '${minioBucket}'`);
-    
-    // Get a list of all objects in the bucket
-    const objectsStream = minioClient.listObjects(minioBucket, '', true);
-    
-    const filesList = [];
-    const analysisMap = new Map(); // To store analysis objects
-    
-    return new Promise((resolve, reject) => {
+    const listPromise = new Promise((resolve, reject) => {
+      console.log(`[MINIO] Listing files from bucket '${minioBucket}'`);
+      const filesList = [];
+      const analysisMap = new Map();
+      
+      // Set a limit on the number of files to retrieve to prevent overload
+      let fileCount = 0;
+      const FILE_LIMIT = 20; // Limit to latest 20 files for performance
+      
+      const objectsStream = minioClient.listObjects(minioBucket, '', true);
+      
       objectsStream.on('data', (obj) => {
         // Create a URL for the file
         const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + obj.name;
@@ -1224,6 +1224,14 @@ async function listFilesFromMinIO() {
           hasAnalysis: false,  // Will update this later if analysis exists
           analysisUrl: null    // Will update this later if analysis exists
         });
+        
+        // Add a file count limit
+        fileCount++;
+        if (fileCount > FILE_LIMIT && !obj.name.startsWith('analysis-')) {
+          console.log(`[MINIO] Reached file limit of ${FILE_LIMIT}, skipping remaining files`);
+          objectsStream.destroy(); // Stop streaming more objects
+          return;
+        }
       });
       
       objectsStream.on('error', (err) => {
@@ -1252,6 +1260,10 @@ async function listFilesFromMinIO() {
         resolve(filesList);
       });
     });
+    
+    // Race between the actual operation and the timeout
+    return await Promise.race([listPromise, timeoutPromise]);
+    
   } catch (err) {
     console.error(`[MINIO] Error listing files from MinIO bucket '${minioBucket}': ${err.message}`);
     console.error(`[MINIO] Error details: ${err.stack}`);
@@ -1264,13 +1276,35 @@ async function handleListFiles(req, res) {
   console.log(`[API] Starting list files handler`);
   const start = Date.now();
   
+  // Set a timeout for the entire operation
+  const timeout = setTimeout(() => {
+    console.log(`[API] List files operation timed out after ${Date.now() - start}ms`);
+    if (!res.headersSent) {
+      res.writeHead(408, {
+        'Content-Type': 'application/json',
+        'Connection': 'close',
+        'X-Response-Time': `${Date.now() - start}ms`
+      });
+      res.end(JSON.stringify({
+        success: false,
+        message: 'Request timed out while retrieving files',
+        files: [] // Return empty array instead of null
+      }));
+    }
+  }, 25000); // 25 second timeout
+  
   try {
     let filesList = [];
     
     // Get files from MinIO if available
     if (minioAvailable) {
       console.log(`[API] Retrieving files from MinIO`);
-      filesList = await listFilesFromMinIO() || [];
+      try {
+        filesList = await listFilesFromMinIO() || [];
+      } catch (minioErr) {
+        console.error(`[API] Error retrieving files from MinIO: ${minioErr.message}`);
+        // Continue with empty list rather than failing entirely
+      }
     } else {
       console.log(`[API] MinIO not available, only checking local files`);
       // Could implement local file listing here if needed
@@ -1278,30 +1312,44 @@ async function handleListFiles(req, res) {
     
     console.log(`[API] Files found: ${filesList.length}`);
     
-    // Return the list of files
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Connection': 'close',
-      'X-Response-Time': `${Date.now() - start}ms`
-    });
+    // Clear the timeout since we're done
+    clearTimeout(timeout);
     
-    res.end(JSON.stringify({
-      success: true,
-      message: 'Files retrieved successfully',
-      files: filesList
-    }));
+    // If headers haven't been sent yet (response not timed out)
+    if (!res.headersSent) {
+      // Return the list of files
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Connection': 'close',
+        'X-Response-Time': `${Date.now() - start}ms`
+      });
+      
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Files retrieved successfully',
+        files: filesList
+      }));
+    }
     
   } catch (err) {
+    // Clear the timeout
+    clearTimeout(timeout);
+    
     console.error(`[API] Error listing files: ${err.message}`);
     console.error(err.stack);
-    res.writeHead(500, {
-      'Content-Type': 'application/json',
-      'Connection': 'close'
-    });
-    res.end(JSON.stringify({
-      success: false,
-      message: `Error listing files: ${err.message}`
-    }));
+    
+    // Only send response if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Connection': 'close'
+      });
+      res.end(JSON.stringify({
+        success: false,
+        message: `Error listing files: ${err.message}`,
+        files: [] // Return empty array instead of null
+      }));
+    }
   }
 }
 
