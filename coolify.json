@@ -1,7 +1,7 @@
 {
-  "port": 8080,
+  "port": 3005,
   "buildPack": "docker",
   "dockerComposeFile": "docker-compose.production.yml",
   "publishDirectory": "",
-  "publishPort": 8080
+  "publishPort": 3005
 } 

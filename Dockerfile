@@ -8,8 +8,8 @@ RUN npm install
 
 COPY . .
 
-# Use a different port to avoid conflicts
-ENV PORT=8080
+# Use port 3005 as suggested in the error message
+ENV PORT=3005
 EXPOSE ${PORT}
 
 CMD ["npm", "start"] 
