@@ -55,6 +55,5 @@ ENV NODE_ENV=production
 # Expose the port
 EXPOSE 9000
 
-# *** DEBUGGING STEP ***
-# List directory contents at runtime instead of starting node
-CMD ["ls", "-la", "/app"] 
+# Start the server using the generated server.js
+CMD ["node", "server.js"] 
