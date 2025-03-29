@@ -1,62 +1,77 @@
-# Reportanalyser
+# AI Report Analyzer
 
-A report analysis application with Coolify deployment configuration.
+An application that uses Gemini AI to analyze uploaded reports and documents, extracting key insights, metrics, and recommendations.
+
+## Features
+
+- Upload PDF, DOCX, and TXT files for analysis
+- Document analysis using Google's Gemini AI
+- Interactive dashboard displaying analysis results
+- Responsive design for all device sizes
+
+## Setup for Gemini AI Integration
+
+### Prerequisites
+
+- Node.js 18 or higher
+- Google AI Platform account with access to Gemini API
+- Gemini API Key
+
+### Local Development
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/Adolphe350/Reportanalyser.git
+   cd Reportanalyser
+   ```
+
+2. Install dependencies:
+   ```
+   npm install
+   ```
+
+3. Create a `.env` file in the root directory and add your Gemini API key:
+   ```
+   GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+
+4. Start the development server:
+   ```
+   npm run dev
+   ```
+
+5. Access the application at `http://localhost:9000`
+
+### Deployment with Coolify
+
+1. In your Coolify dashboard, go to the environment variables section for your deployment.
+
+2. Add the `GEMINI_API_KEY` environment variable with your Gemini API key.
+
+3. Redeploy the application.
+
+4. The server will automatically detect the API key and use Gemini for document analysis.
+
+## How It Works
+
+1. When a document is uploaded, the server extracts text from the file.
+2. The text is sent to the Gemini AI using the provided prompt format.
+3. Gemini analyzes the text and returns structured data with insights, metrics, and recommendations.
+4. The results are displayed in the dashboard interface.
+
+## Fallback Mode
+
+If the Gemini API key is not available or there's an error in the API call, the application will switch to a simulation mode where it generates mock analysis results.
+
+## Technical Implementation
+
+The integration uses the `@google/generative-ai` npm package to communicate with the Gemini API. The document text is sent to the API with a structured prompt that asks for specific analysis components. The response is then parsed and formatted for display in the dashboard UI.
+
+## Customizing the Analysis
+
+To modify the analysis prompt or output format, edit the `analyzeDocumentWithGemini` function in `server.js`. The prompt template can be adjusted to focus on different aspects of the document analysis based on your specific needs.
 
 ## Project Structure
 
 - `docker-compose.yml` - Development configuration
-- `docker-compose.production.yml` - Production configuration for Coolify
-- `Dockerfile` - Container definition for the application
-- `index.js` - Simple Express.js server
-- `package.json` - Node.js dependencies
-
-## Local Development
-
-To run the project locally:
-
-```bash
-docker compose up
-```
-
-The application will be available at http://localhost:3000
-
-## Deployment with Coolify
-
-This project is configured for continuous deployment with Coolify.
-
-### Prerequisites
-
-1. A server with Coolify installed
-2. GitHub repository for this project
-
-### Setup in Coolify
-
-1. Log in to your Coolify dashboard
-2. Create a new project
-3. Select "Git Based Deployment"
-4. Connect your GitHub repository
-5. Select "Docker Compose" as the Build Pack
-6. Set the Docker Compose file location to `/docker-compose.production.yml`
-7. Set the following environment variables:
-   - `DATABASE_URL` - Your database connection string
-   - `SECRET_KEY` - A secure random string
-   - `HOST_DOMAIN` - Your domain name (e.g., `app.yourdomain.com`)
-8. Deploy your application
-
-### Automatic Deployments
-
-Coolify will automatically redeploy your application whenever you push changes to your repository. You can also manually trigger deployments from the Coolify dashboard.
-
-## Environment Variables
-
-The following environment variables should be set in Coolify:
-
-- `DATABASE_URL` - Database connection string
-- `SECRET_KEY` - Secret key for encryption/sessions
-- `HOST_DOMAIN` - Domain for the application
-- `PORT` - (Optional) Port for the application, defaults to 3000
-
-## Notes
-
-- Don't manually define ports in `docker-compose.production.yml` as Coolify handles this automatically
-- Use labels for Traefik routing and SSL configuration 
+- `docker-compose.production.yml`

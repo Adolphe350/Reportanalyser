@@ -6,6 +6,10 @@ RUN apk add --no-cache busybox-extras curl net-tools netcat-openbsd iputils
 # Create app directory outside of /app to avoid Coolify's volume mount
 WORKDIR /simple-app
 
+# Copy package.json and install dependencies
+COPY package.json ./
+RUN npm install
+
 # Copy source files from the repository with explicit file list for visibility
 COPY ./public ./public
 COPY ./server.js ./server.js
@@ -33,7 +37,7 @@ RUN echo '#!/bin/sh' > healthcheck.sh && \
 ENV PORT=9000
 ENV NODE_ENV=production
 # Set Node.js memory limit but remove flags that might cause issues
-ENV NODE_OPTIONS="--max-old-space-size=128"
+ENV NODE_OPTIONS="--max-old-space-size=256"
 
 # Expose the port
 EXPOSE 9000
