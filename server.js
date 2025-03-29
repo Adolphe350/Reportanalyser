@@ -11,9 +11,34 @@ try {
   console.error(`[STARTUP] Error loading dotenv: ${err.message}`);
 }
 
-// Load PDF.js
-const pdfjsLib = require('pdfjs-dist');
-pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(__dirname, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.js');
+// Load PDF.js using dynamic import instead of require (since it's an ES Module)
+// We'll initialize it later when needed
+let pdfjsLib = null;
+const initPdfLib = async () => {
+  try {
+    console.log(`[PDF] Dynamically importing PDF.js library`);
+    // Try different paths based on what might be available in the installed package
+    try {
+      pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.js');
+      console.log(`[PDF] PDF.js library loaded successfully via legacy path`);
+    } catch (e) {
+      console.log(`[PDF] Legacy path failed, trying alternative paths`);
+      try {
+        pdfjsLib = await import('pdfjs-dist/build/pdf.js');
+      } catch (e2) {
+        pdfjsLib = await import('pdfjs-dist');
+      }
+    }
+    
+    // Set the worker source to null to use the main thread
+    pdfjsLib.GlobalWorkerOptions.workerSrc = null;
+    console.log(`[PDF] PDF.js worker initialized to use main thread`);
+    return true;
+  } catch (err) {
+    console.error(`[PDF] Error loading PDF.js: ${err.message}`);
+    return false;
+  }
+};
 
 // Initialize MinIO client
 const Minio = require('minio');
@@ -419,11 +444,21 @@ async function extractTextFromPDF(pdfBuffer) {
   console.log(`[PDF] Starting PDF text extraction (${pdfBuffer.length} bytes)`);
   
   try {
+    // Make sure PDF.js is initialized
+    if (!pdfjsLib) {
+      console.log(`[PDF] PDF.js not loaded yet, initializing...`);
+      const initialized = await initPdfLib();
+      if (!initialized) {
+        throw new Error('Failed to initialize PDF.js library');
+      }
+    }
+    
     // Load the PDF document
     const pdfData = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-    
     console.log(`[PDF] Loading PDF document`);
+    
+    // Use the dynamically loaded PDF.js library
+    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
     const pdf = await loadingTask.promise;
     console.log(`[PDF] PDF loaded with ${pdf.numPages} pages`);
     
@@ -460,7 +495,51 @@ async function extractTextFromPDF(pdfBuffer) {
   } catch (err) {
     console.error(`[PDF] Error extracting text from PDF: ${err.message}`);
     console.error(err.stack);
-    return `Error extracting text from PDF: ${err.message}`;
+    
+    // Fallback method to extract at least some text from PDF
+    try {
+      console.log(`[PDF] Using fallback text extraction method`);
+      // Basic text extraction by looking for text patterns in the PDF
+      const textChunks = [];
+      for (let i = 0; i < pdfBuffer.length - 6; i++) {
+        // Look for text between parentheses, a common text encoding in PDFs
+        if (pdfBuffer[i] === 40) { // '('
+          let text = '';
+          let j = i + 1;
+          let depth = 1;
+          
+          while (j < pdfBuffer.length && depth > 0 && text.length < 1000) {
+            if (pdfBuffer[j] === 40) depth++; // Nested '('
+            else if (pdfBuffer[j] === 41) depth--; // ')'
+            
+            if (depth > 0 && pdfBuffer[j] >= 32 && pdfBuffer[j] <= 126) { // printable ASCII
+              text += String.fromCharCode(pdfBuffer[j]);
+            }
+            j++;
+          }
+          
+          if (text.length > 3) { // Only keep substantial text
+            // Remove common PDF control sequences
+            text = text.replace(/\\(\d{3}|n|r|t|b|f|\\|\(|\))/g, ' ');
+            textChunks.push(text);
+          }
+          i = j;
+        }
+      }
+      
+      // Join the chunks and limit the size
+      const fallbackText = textChunks
+        .filter(chunk => /[a-zA-Z]{3,}/.test(chunk)) // Only chunks with actual words
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .substring(0, 5000);
+      
+      console.log(`[PDF] Fallback extraction found ${textChunks.length} text chunks`);
+      return `[PDF text extraction fallback mode - partial content]:\n\n${fallbackText}`;
+    } catch (fallbackErr) {
+      console.error(`[PDF] Fallback extraction also failed: ${fallbackErr.message}`);
+      return `Could not extract text from PDF file due to errors.`;
+    }
   }
 }
 
@@ -478,7 +557,34 @@ async function extractTextFromFile(buffer, fileType, fileName) {
   const isPDF = buffer.slice(0, 5).toString().includes('%PDF');
   if (isPDF || fileType === 'application/pdf') {
     console.log(`[EXTRACT] PDF file detected, using PDF.js for extraction`);
-    return await extractTextFromPDF(buffer);
+    try {
+      return await extractTextFromPDF(buffer);
+    } catch (err) {
+      console.error(`[EXTRACT] Error using PDF.js: ${err.message}, using fallback`);
+      
+      // Simple fallback to extract some text from the PDF (not as good as PDF.js)
+      const textChunks = [];
+      for (let i = 0; i < buffer.length - 4; i++) {
+        // Look for text between parentheses, a common text encoding in PDFs
+        if (buffer[i] === 40 && buffer[i+1] >= 32 && buffer[i+1] <= 126) { // '(' and ASCII text
+          let text = '';
+          let j = i + 1;
+          while (j < buffer.length && buffer[j] !== 41 && text.length < 1000) { // until ')'
+            if (buffer[j] >= 32 && buffer[j] <= 126) { // printable ASCII
+              text += String.fromCharCode(buffer[j]);
+            }
+            j++;
+          }
+          if (text.length > 3) { // Only keep substantial text
+            textChunks.push(text);
+          }
+          i = j;
+        }
+      }
+      
+      const fallbackText = textChunks.join(' ').substring(0, 5000);
+      return `[PDF text extraction fallback mode - limited text available]:\n\n${fallbackText}`;
+    }
   }
   
   // For all other file types
@@ -865,6 +971,13 @@ server.on("error", (err) => {
 
 // Start the server
 console.log(`[STARTUP] Starting server initialization`);
+
+// Initialize PDF.js at startup
+initPdfLib().then(success => {
+  console.log(`[STARTUP] PDF.js initialization: ${success ? 'Success' : 'Failed'}`);
+}).catch(err => {
+  console.error(`[STARTUP] Error initializing PDF.js: ${err.message}`);
+});
 
 // Ensure MinIO bucket exists if MinIO is available
 if (minioAvailable) {
