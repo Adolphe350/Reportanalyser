@@ -1,0 +1,126 @@
+<div class="file-info" style="background-color: #f0f7ff; border-radius: 5px; padding: 10px 15px; margin-top: 15px; font-size: 0.9rem;">
+    Analyzed: <span id="file-name">report.pdf</span> (<span id="file-size">1.2 MB</span>)
+    <div id="storage-info" style="margin-top: 5px; font-size: 0.8rem; color: #666;">
+        Storage: <span id="storage-type">Local</span>
+        <a id="file-link" href="#" target="_blank" style="margin-left: 10px; color: #0078ff; text-decoration: none; display: none;">
+            <i class="fas fa-external-link-alt"></i> View File
+        </a>
+    </div>
+</div>
+
+<script>
+    // Dashboard functionality
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("Dashboard loaded successfully");
+        
+        const uploadArea = document.querySelector('.upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadButton = document.getElementById('upload-button');
+        const progressContainer = document.querySelector('.progress-container');
+        const progressFill = document.querySelector('.progress-fill');
+        const progressText = document.querySelector('.progress-text');
+        const analysisResults = document.querySelector('.analysis-results');
+        
+        // Upload button click handler
+        if (uploadButton) {
+            uploadButton.addEventListener('click', function() {
+                fileInput.click();
+            });
+        }
+        
+        // Function to display analysis results
+        function displayAnalysisResults(response, file) {
+            console.log('Analysis complete:', response);
+            
+            // Reset upload area
+            resetUploadArea();
+            
+            // Show analysis results section
+            analysisResults.style.display = 'block';
+            
+            // Update file info
+            document.getElementById('file-name').textContent = file.name;
+            document.getElementById('file-size').textContent = formatFileSize(file.size);
+            
+            // Update storage info if available
+            if (response.file && response.file.storage) {
+                const storageInfoHtml = `
+                <div style="margin-top: 5px; font-size: 0.8rem; color: #666;">
+                    Storage: <span>${response.file.storage === 'minio' ? 'MinIO Cloud Storage' : 'Local Storage'}</span>
+                    ${response.file.location ? `<a href="${response.file.location}" target="_blank" style="margin-left: 10px; color: #0078ff; text-decoration: none;">
+                        <i class="fas fa-external-link-alt"></i> View File
+                    </a>` : ''}
+                </div>`;
+                
+                // Append storage info to file-info element
+                document.querySelector('.file-info').innerHTML += storageInfoHtml;
+            }
+            
+            // Update insights
+            const insightsContainer = document.getElementById('insights-container');
+            insightsContainer.innerHTML = '';
+            
+            response.analysis.keyInsights.forEach(insight => {
+                const insightElement = document.createElement('div');
+                insightElement.style.cssText = 'background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 10px;';
+                insightElement.textContent = insight;
+                insightsContainer.appendChild(insightElement);
+            });
+            
+            // Update metrics
+            const metricsContainer = document.getElementById('metrics-container');
+            metricsContainer.innerHTML = '';
+            
+            // Add sentiment metric
+            addMetric(metricsContainer, response.analysis.metrics.sentiment * 100, 'Sentiment', '%');
+            
+            // Add confidence metric
+            addMetric(metricsContainer, response.analysis.metrics.confidence * 100, 'Confidence', '%');
+            
+            // Update topics
+            const topicsContainer = document.getElementById('topics-container');
+            topicsContainer.innerHTML = '';
+            
+            response.analysis.metrics.topics.forEach(topic => {
+                const topicElement = document.createElement('div');
+                topicElement.style.cssText = 'background-color: #e0efff; color: #0078ff; padding: 5px 10px; border-radius: 20px; font-size: 0.85rem;';
+                topicElement.textContent = topic;
+                topicsContainer.appendChild(topicElement);
+            });
+            
+            // Update recommendations
+            const recommendationsList = document.getElementById('recommendations-list');
+            recommendationsList.innerHTML = '';
+            
+            response.analysis.recommendations.forEach(recommendation => {
+                const li = document.createElement('li');
+                li.textContent = recommendation;
+                li.style.marginBottom = '8px';
+                recommendationsList.appendChild(li);
+            });
+            
+            // Add document text preview if available
+            if (response.analysis.documentText) {
+                const docPreviewContainer = document.createElement('div');
+                docPreviewContainer.style.cssText = 'margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;';
+                
+                const previewTitle = document.createElement('h4');
+                previewTitle.textContent = 'Document Preview';
+                previewTitle.style.marginBottom = '10px';
+                
+                const previewText = document.createElement('div');
+                previewText.style.cssText = 'background-color: #f5f5f5; padding: 15px; border-radius: 5px; font-size: 0.9rem; max-height: 200px; overflow-y: auto; white-space: pre-wrap;';
+                previewText.textContent = response.analysis.documentText;
+                
+                docPreviewContainer.appendChild(previewTitle);
+                docPreviewContainer.appendChild(previewText);
+                
+                // Add to the analysis results section
+                analysisResults.appendChild(docPreviewContainer);
+            }
+            
+            // Scroll to results
+            analysisResults.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
+</script> 

@@ -15,6 +15,120 @@ try {
 const pdfjsLib = require('pdfjs-dist');
 pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(__dirname, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.js');
 
+// Initialize MinIO client
+const Minio = require('minio');
+let minioClient = null;
+let minioBucket = process.env.MINIO_BUCKET || 'report-analyzer';
+let minioAvailable = false;
+
+// Try to initialize MinIO client
+try {
+  const minioEndpoint = process.env.MINIO_ENDPOINT;
+  const minioPort = parseInt(process.env.MINIO_PORT || '443');
+  const minioUseSSL = process.env.MINIO_USE_SSL === 'true';
+  const minioAccessKey = process.env.MINIO_ACCESS_KEY;
+  const minioSecretKey = process.env.MINIO_SECRET_KEY;
+  
+  if (minioEndpoint && minioAccessKey && minioSecretKey) {
+    console.log(`[STARTUP] MinIO configuration found, initializing client for ${minioEndpoint}`);
+    
+    minioClient = new Minio.Client({
+      endPoint: minioEndpoint,
+      port: minioPort,
+      useSSL: minioUseSSL,
+      accessKey: minioAccessKey,
+      secretKey: minioSecretKey
+    });
+    
+    console.log(`[STARTUP] MinIO client initialized successfully`);
+    minioAvailable = true;
+  } else {
+    console.log(`[STARTUP] MinIO configuration incomplete, storage will use local filesystem`);
+  }
+} catch (err) {
+  console.error(`[STARTUP] Error initializing MinIO client: ${err.message}`);
+  console.log(`[STARTUP] Storage will use local filesystem`);
+}
+
+// Check if MinIO bucket exists, create if not
+async function ensureMinIOBucket() {
+  if (!minioAvailable || !minioClient) return false;
+  
+  try {
+    const exists = await minioClient.bucketExists(minioBucket);
+    if (exists) {
+      console.log(`[MINIO] Bucket '${minioBucket}' already exists`);
+      return true;
+    }
+    
+    console.log(`[MINIO] Creating bucket '${minioBucket}'`);
+    await minioClient.makeBucket(minioBucket);
+    console.log(`[MINIO] Bucket '${minioBucket}' created successfully`);
+    
+    // Set bucket policy for public read access if needed
+    // This is optional and depends on your requirements
+    /*
+    const policy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: { AWS: ['*'] },
+          Action: ['s3:GetObject'],
+          Resource: [`arn:aws:s3:::${minioBucket}/*`]
+        }
+      ]
+    };
+    await minioClient.setBucketPolicy(minioBucket, JSON.stringify(policy));
+    console.log(`[MINIO] Bucket policy set to allow public reads`);
+    */
+    
+    return true;
+  } catch (err) {
+    console.error(`[MINIO] Error checking/creating bucket: ${err.message}`);
+    return false;
+  }
+}
+
+// Function to upload file to MinIO
+async function uploadFileToMinIO(fileBuffer, fileName, contentType) {
+  if (!minioAvailable || !minioClient) {
+    console.log(`[MINIO] MinIO not available, skipping upload`);
+    return null;
+  }
+  
+  try {
+    // Ensure the bucket exists
+    const bucketReady = await ensureMinIOBucket();
+    if (!bucketReady) {
+      throw new Error('Bucket not ready');
+    }
+    
+    // Create a unique object name by adding timestamp
+    const objectName = `${Date.now()}-${fileName}`;
+    
+    console.log(`[MINIO] Uploading ${fileName} to bucket '${minioBucket}' as ${objectName}`);
+    
+    // Upload the file
+    await minioClient.putObject(minioBucket, objectName, fileBuffer, fileBuffer.length, {
+      'Content-Type': contentType
+    });
+    
+    console.log(`[MINIO] File uploaded successfully to MinIO`);
+    
+    // Generate URL for the uploaded file
+    const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + objectName;
+    return {
+      bucket: minioBucket,
+      objectName: objectName,
+      url: fileUrl
+    };
+  } catch (err) {
+    console.error(`[MINIO] Error uploading file to MinIO: ${err.message}`);
+    return null;
+  }
+}
+
 const port = process.env.PORT || 9000;
 
 // Add Gemini API dependency
@@ -521,7 +635,7 @@ function serveFile(req, res, filePath) {
   });
 }
 
-// Function to handle file uploads - updated with better multipart parsing
+// Updated function to handle file uploads with MinIO integration
 function handleFileUpload(req, res) {
   console.log(`[UPLOAD] Starting file upload handler`);
   const start = Date.now();
@@ -608,11 +722,18 @@ function handleFileUpload(req, res) {
       const uniqueFilename = `${Date.now()}-${filename || 'upload'}`;
       const filePath = path.join(uploadsDir, uniqueFilename);
       
-      console.log(`[UPLOAD] Saving file to ${filePath}`);
+      console.log(`[UPLOAD] Saving file to local path: ${filePath}`);
       
-      // Actually save the file (unlike before)
+      // Save the file locally first (as a backup)
       fs.writeFileSync(filePath, fileBuffer);
-      console.log(`[UPLOAD] File saved successfully (${fileBuffer.length} bytes)`);
+      console.log(`[UPLOAD] File saved successfully to local storage (${fileBuffer.length} bytes)`);
+      
+      // Upload to MinIO if available
+      let minioFileInfo = null;
+      if (minioAvailable) {
+        console.log(`[UPLOAD] Uploading file to MinIO storage`);
+        minioFileInfo = await uploadFileToMinIO(fileBuffer, filename, fileType);
+      }
       
       // Extract text from the file
       console.log(`[UPLOAD] Extracting text from file`);
@@ -638,7 +759,9 @@ function handleFileUpload(req, res) {
           originalName: filename,
           size: fileBuffer.length,
           type: fileType,
-          savedAs: uniqueFilename
+          savedAs: uniqueFilename,
+          storage: minioFileInfo ? 'minio' : 'local',
+          location: minioFileInfo ? minioFileInfo.url : `uploads/${uniqueFilename}`
         },
         analysis: {
           title: 'Analysis Summary',
@@ -739,6 +862,18 @@ server.setTimeout(60000, (socket) => {
 server.on("error", (err) => {
   console.error(`[ERROR] Server error: ${err.message}`);
 });
+
+// Start the server
+console.log(`[STARTUP] Starting server initialization`);
+
+// Ensure MinIO bucket exists if MinIO is available
+if (minioAvailable) {
+  ensureMinIOBucket().then(success => {
+    console.log(`[STARTUP] MinIO bucket check complete: ${success ? 'Success' : 'Failed'}`);
+  }).catch(err => {
+    console.error(`[STARTUP] Error checking MinIO bucket: ${err.message}`);
+  });
+}
 
 // Start listening
 server.listen(port, "0.0.0.0", () => {
