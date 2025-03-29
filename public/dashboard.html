@@ -4,149 +4,516 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - AI Report Analyzer</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/dashboard.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Reset and base styles */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: "Segoe UI", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+        
+        /* Navigation bar */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .brand {
+            display: flex;
+            align-items: center;
+        }
+        
+        .brand a {
+            color: #0078ff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        
+        .nav-links {
+            display: flex;
+            align-items: center;
+        }
+        
+        .nav-links a {
+            margin-left: 25px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .nav-links a.active,
+        .nav-links a:hover {
+            color: #0078ff;
+        }
+        
+        .nav-links a i,
+        .nav-links a svg {
+            margin-right: 5px;
+        }
+        
+        .right-links a {
+            margin-left: 20px;
+            color: #555;
+        }
+        
+        /* Main content */
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .dashboard-header h1 {
+            font-size: 2rem;
+            color: #333;
+        }
+        
+        /* Dashboard content */
+        .dashboard-content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            padding: 20px;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+        }
+        
+        .sidebar-menu li {
+            margin-bottom: 10px;
+        }
+        
+        .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #555;
+            transition: background-color 0.3s;
+        }
+        
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
+            background-color: #f0f7ff;
+            color: #0078ff;
+        }
+        
+        .sidebar-menu svg {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+        }
+        
+        /* Main dashboard area */
+        .main-dashboard {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            background-color: #fafafa;
+            cursor: pointer;
+            transition: border-color 0.3s, background-color 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #0078ff;
+            background-color: #f0f7ff;
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            color: #0078ff;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .upload-text p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        /* Recent Reports */
+        .reports-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .reports-header h2 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+        
+        .report-list {
+            list-style: none;
+        }
+        
+        .report-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .report-info {
+            display: flex;
+            align-items: center;
+        }
+        
+        .report-icon {
+            width: 40px;
+            height: 40px;
+            background-color: #f0f7ff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+        }
+        
+        .report-icon svg {
+            color: #0078ff;
+            width: 20px;
+            height: 20px;
+        }
+        
+        .report-name {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .report-date {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .report-status {
+            font-size: 0.85rem;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background-color: #e6f4ea;
+            color: #137333;
+        }
+        
+        .report-status.pending {
+            background-color: #fff8e6;
+            color: #b06000;
+        }
+        
+        /* Button styles */
+        .btn {
+            display: inline-block;
+            background-color: #0078ff;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.3s;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background-color: #0061cf;
+        }
+        
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid #0078ff;
+            color: #0078ff;
+        }
+        
+        .btn-outline:hover {
+            background-color: #f0f7ff;
+        }
+        
+        /* Icons */
+        .icon {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        
+        /* AI Assistant Button */
+        .ai-assistant {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+        
+        .ai-assistant span {
+            background: #FFD700;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            font-weight: bold;
+        }
+    </style>
 </head>
-<body class="dashboard-page">
-    <header>
-        <div class="logo">
-            <h1><a href="/">AI Report Analyzer</a></h1>
+<body>
+    <!-- Navigation Bar -->
+    <nav>
+        <div class="brand">
+            <a href="index.html">AI Report Analyzer</a>
         </div>
-        <nav>
-            <ul>
-                <li><a href="/"><i class="fas fa-home"></i> Home</a></li>
-                <li><a href="/dashboard" class="active"><i class="fas fa-chart-line"></i> Dashboard</a></li>
-            </ul>
-        </nav>
-        <div class="right-nav">
-            <a href="/admin" class="admin-link"><i class="fas fa-cog"></i> Admin</a>
-            <a href="/help" class="help-link"><i class="fas fa-question-circle"></i></a>
+        <div class="nav-links">
+            <a href="index.html">
+                <svg class="icon" fill="#555" viewBox="0 0 24 24">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"></path>
+                </svg>
+                Home
+            </a>
+            <a href="dashboard.html" class="active">
+                <svg class="icon" fill="#0078ff" viewBox="0 0 24 24">
+                    <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path>
+                </svg>
+                Dashboard
+            </a>
         </div>
-    </header>
-
-    <main class="dashboard-container">
-        <aside class="sidebar">
-            <nav class="sidebar-nav">
-                <ul>
-                    <li><a href="#" class="active"><i class="fas fa-tachometer-alt"></i> Overview</a></li>
-                    <li><a href="#"><i class="fas fa-file-alt"></i> Reports</a></li>
-                    <li><a href="#"><i class="fas fa-chart-pie"></i> Analytics</a></li>
-                    <li><a href="#"><i class="fas fa-lightbulb"></i> Insights</a></li>
-                    <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
-                </ul>
-            </nav>
-        </aside>
-
+        <div class="right-links">
+            <a href="#">
+                <svg class="icon" fill="#555" viewBox="0 0 24 24">
+                    <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"></path>
+                </svg>
+                Admin
+            </a>
+            <a href="#">
+                <svg class="icon" fill="#555" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm0-4h-2V7h2v8z"></path>
+                </svg>
+            </a>
+        </div>
+    </nav>
+    
+    <!-- Main content -->
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>Dashboard</h1>
+            <button class="btn">New Analysis</button>
+        </div>
+        
         <div class="dashboard-content">
-            <div class="dashboard-header">
-                <h1>Dashboard</h1>
-                <div class="actions">
-                    <button class="btn-upload"><i class="fas fa-upload"></i> Upload Report</button>
-                </div>
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <ul class="sidebar-menu">
+                    <li>
+                        <a href="#" class="active">
+                            <svg fill="#0078ff" viewBox="0 0 24 24">
+                                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path>
+                            </svg>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <svg fill="#555" viewBox="0 0 24 24">
+                                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
+                            </svg>
+                            All Reports
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <svg fill="#555" viewBox="0 0 24 24">
+                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+                            </svg>
+                            Analytics
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <svg fill="#555" viewBox="0 0 24 24">
+                                <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"></path>
+                            </svg>
+                            Saved Insights
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <svg fill="#555" viewBox="0 0 24 24">
+                                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"></path>
+                            </svg>
+                            Notifications
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <svg fill="#555" viewBox="0 0 24 24">
+                                <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"></path>
+                            </svg>
+                            Settings
+                        </a>
+                    </li>
+                </ul>
             </div>
-
-            <div class="stats-container">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-file-alt"></i>
+            
+            <!-- Main dashboard area -->
+            <div class="main-dashboard">
+                <div class="upload-area">
+                    <div class="upload-icon">
+                        <svg fill="#0078ff" width="48" height="48" viewBox="0 0 24 24">
+                            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"></path>
+                        </svg>
                     </div>
-                    <div class="stat-content">
-                        <h3>Total Reports</h3>
-                        <p class="stat-value">12</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Insights Generated</h3>
-                        <p class="stat-value">48</p>
+                    <div class="upload-text">
+                        <h3>Upload Report</h3>
+                        <p>Drag and drop your PDF, DOCX, or TXT files here, or click to browse</p>
+                        <button class="btn">Select File</button>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-lightbulb"></i>
+                
+                <div class="recent-reports">
+                    <div class="reports-header">
+                        <h2>Recent Reports</h2>
+                        <a href="#" class="btn btn-outline">View All</a>
                     </div>
-                    <div class="stat-content">
-                        <h3>Recommendations</h3>
-                        <p class="stat-value">36</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Processing Time</h3>
-                        <p class="stat-value">2.4 mins</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="recent-reports">
-                <div class="section-header">
-                    <h2>Recent Reports</h2>
-                    <a href="#" class="view-all">View All</a>
-                </div>
-                <div class="reports-table-container">
-                    <table class="reports-table">
-                        <thead>
-                            <tr>
-                                <th>Report Name</th>
-                                <th>Date</th>
-                                <th>Status</th>
-                                <th>Insights</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Q1 Financial Report</td>
-                                <td>May 12, 2025</td>
-                                <td><span class="status-completed">Completed</span></td>
-                                <td>12</td>
-                                <td class="actions-cell">
-                                    <button class="btn-view"><i class="fas fa-eye"></i></button>
-                                    <button class="btn-download"><i class="fas fa-download"></i></button>
-                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Marketing Analysis 2025</td>
-                                <td>May 10, 2025</td>
-                                <td><span class="status-completed">Completed</span></td>
-                                <td>8</td>
-                                <td class="actions-cell">
-                                    <button class="btn-view"><i class="fas fa-eye"></i></button>
-                                    <button class="btn-download"><i class="fas fa-download"></i></button>
-                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Operations Audit</td>
-                                <td>May 8, 2025</td>
-                                <td><span class="status-processing">Processing</span></td>
-                                <td>--</td>
-                                <td class="actions-cell">
-                                    <button class="btn-view disabled"><i class="fas fa-eye"></i></button>
-                                    <button class="btn-download disabled"><i class="fas fa-download"></i></button>
-                                    <button class="btn-delete"><i class="fas fa-trash"></i></button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    
+                    <ul class="report-list">
+                        <li class="report-item">
+                            <div class="report-info">
+                                <div class="report-icon">
+                                    <svg fill="#0078ff" viewBox="0 0 24 24">
+                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="report-name">Q2 Financial Report</div>
+                                    <div class="report-date">Uploaded 2 hours ago</div>
+                                </div>
+                            </div>
+                            <span class="report-status">Analyzed</span>
+                        </li>
+                        
+                        <li class="report-item">
+                            <div class="report-info">
+                                <div class="report-icon">
+                                    <svg fill="#0078ff" viewBox="0 0 24 24">
+                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="report-name">Market Research 2023</div>
+                                    <div class="report-date">Uploaded yesterday</div>
+                                </div>
+                            </div>
+                            <span class="report-status">Analyzed</span>
+                        </li>
+                        
+                        <li class="report-item">
+                            <div class="report-info">
+                                <div class="report-icon">
+                                    <svg fill="#0078ff" viewBox="0 0 24 24">
+                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="report-name">Customer Feedback Analysis</div>
+                                    <div class="report-date">Uploaded 3 days ago</div>
+                                </div>
+                            </div>
+                            <span class="report-status">Analyzed</span>
+                        </li>
+                        
+                        <li class="report-item">
+                            <div class="report-info">
+                                <div class="report-icon">
+                                    <svg fill="#0078ff" viewBox="0 0 24 24">
+                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="report-name">Strategic Planning Document</div>
+                                    <div class="report-date">Uploaded 5 days ago</div>
+                                </div>
+                            </div>
+                            <span class="report-status pending">Processing</span>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
-    </main>
-
-    <footer>
-        <p>&copy; 2025 AI Report Analyzer. All rights reserved.</p>
-    </footer>
-
-    <script src="js/main.js"></script>
-    <script src="js/dashboard.js"></script>
+    </div>
+    
+    <!-- AI Assistant Button -->
+    <div class="ai-assistant">
+        <span>🤖</span>
+        <svg fill="white" width="24" height="24" viewBox="0 0 24 24">
+            <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"></path>
+        </svg>
+        <svg fill="white" width="24" height="24" viewBox="0 0 24 24">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path>
+        </svg>
+    </div>
+    
+    <script>
+        // Dashboard functionality
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("Dashboard loaded successfully");
+            
+            // Add click handler for the upload area
+            const uploadArea = document.querySelector('.upload-area');
+            if (uploadArea) {
+                uploadArea.addEventListener('click', function() {
+                    alert('File upload functionality would open a file dialog in a real application.');
+                });
+            }
+        });
+    </script>
 </body>
 </html> 
