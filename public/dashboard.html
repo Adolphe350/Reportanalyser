@@ -836,6 +836,7 @@
                 // Get the sidebar menu items
                 const dashboardLink = document.querySelector('.sidebar-menu li:nth-child(1) a');
                 const allReportsLink = document.querySelector('.sidebar-menu li:nth-child(2) a');
+                const uploadArea = document.querySelector('.upload-area');
                 
                 // Set up click handler for All Reports link
                 if (allReportsLink) {
@@ -851,6 +852,11 @@
                         // Update the header
                         if (reportsHeader) {
                             reportsHeader.textContent = "All Reports";
+                        }
+                        
+                        // Hide upload area in All Reports view
+                        if (uploadArea) {
+                            uploadArea.style.display = 'none';
                         }
                         
                         // Switch to all documents view
@@ -873,6 +879,11 @@
                         // Update the header
                         if (reportsHeader) {
                             reportsHeader.textContent = "Recent Documents";
+                        }
+                        
+                        // Show upload area in Dashboard view
+                        if (uploadArea) {
+                            uploadArea.style.display = 'block';
                         }
                         
                         // Switch to recent documents view
