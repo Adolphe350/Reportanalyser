@@ -1522,6 +1522,106 @@ async function handleGetAnalysis(req, res) {
   }
 }
 
+// Handle document download request
+async function handleDownloadDocument(req, res) {
+  console.log(`[API] Starting document download handler`);
+  const start = Date.now();
+  
+  try {
+    // Get the file ID from the query parameters
+    const urlParts = req.url.split('?');
+    if (urlParts.length < 2) {
+      throw new Error('Missing file ID parameter');
+    }
+    
+    const queryParams = new URLSearchParams(urlParts[1]);
+    const fileId = queryParams.get('id');
+    
+    if (!fileId) {
+      throw new Error('Missing file ID parameter');
+    }
+    
+    console.log(`[API] Retrieving document for download: ${fileId}`);
+    
+    if (!minioAvailable || !minioClient) {
+      throw new Error('Storage service is not available');
+    }
+    
+    // Check if the object exists
+    try {
+      await minioClient.statObject(minioBucket, fileId);
+    } catch (err) {
+      console.log(`[MINIO] Document object ${fileId} not found: ${err.message}`);
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Connection': 'close'
+      });
+      res.end(JSON.stringify({
+        success: false,
+        message: 'Document not found'
+      }));
+      return;
+    }
+    
+    // Get file info to determine content type and name
+    const objectInfo = await minioClient.statObject(minioBucket, fileId);
+    
+    // Extract original filename from the object name (removes timestamp prefix)
+    const originalName = fileId.substring(fileId.indexOf('-') + 1);
+    
+    // Determine content type based on filename extension
+    let contentType = 'application/octet-stream';
+    if (originalName.endsWith('.pdf')) {
+      contentType = 'application/pdf';
+    } else if (originalName.endsWith('.doc')) {
+      contentType = 'application/msword';
+    } else if (originalName.endsWith('.docx')) {
+      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else if (originalName.endsWith('.txt')) {
+      contentType = 'text/plain';
+    }
+    
+    // Get the document object from MinIO
+    const dataStream = await minioClient.getObject(minioBucket, fileId);
+    
+    // Set appropriate headers for download
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${originalName}"`,
+      'Content-Length': objectInfo.size,
+      'Connection': 'close',
+      'X-Response-Time': `${Date.now() - start}ms`
+    });
+    
+    // Pipe the data stream directly to the response
+    dataStream.pipe(res);
+    
+    // Handle errors during streaming
+    dataStream.on('error', err => {
+      console.error(`[MINIO] Error streaming document data: ${err.message}`);
+      // The headers might be already sent, so we can only abort the connection
+      res.destroy();
+    });
+    
+  } catch (err) {
+    console.error(`[API] Error downloading document: ${err.message}`);
+    console.error(err.stack);
+    if (!res.headersSent) {
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Connection': 'close'
+      });
+      res.end(JSON.stringify({
+        success: false,
+        message: `Error downloading document: ${err.message}`
+      }));
+    } else {
+      // If headers already sent, we can only abort the connection
+      res.destroy();
+    }
+  }
+}
+
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   const start = Date.now();
@@ -1563,6 +1663,13 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.startsWith('/api/analysis')) {
       console.log(`[API] Received get analysis request`);
       handleGetAnalysis(req, res);
+      return;
+    }
+    
+    // Handle document download request
+    if (req.method === 'GET' && req.url.startsWith('/api/download')) {
+      console.log(`[API] Received document download request`);
+      handleDownloadDocument(req, res);
       return;
     }
     

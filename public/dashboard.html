@@ -1155,6 +1155,141 @@
                     });
             }
             
+            // Function to load analysis for a specific document
+            function loadAnalysisForDocument(documentId) {
+                console.log('Loading analysis for document:', documentId);
+                
+                // Check if document ID is valid
+                if (!documentId) {
+                    console.error('Invalid document ID for analysis');
+                    return;
+                }
+                
+                // Format expected by the server is 'analysis-documentId'
+                // For direct fetch, we add the 'analysis-' prefix to the documentId
+                const analysisId = documentId.replace(/^analysis-/, '');
+                
+                // Show loading state in the analysis results section
+                analysisResults.style.display = 'block';
+                const documentSummary = document.getElementById('document-summary');
+                const insightsContainer = document.getElementById('insights-container');
+                const metricsContainer = document.getElementById('metrics-container');
+                const recommendationsList = document.getElementById('recommendations-list');
+                const fileName = document.getElementById('file-name');
+                const fileSize = document.getElementById('file-size');
+                
+                documentSummary.innerHTML = '<div class="loading-spinner">Loading analysis...</div>';
+                insightsContainer.innerHTML = '';
+                metricsContainer.innerHTML = '';
+                recommendationsList.innerHTML = '';
+                
+                // Find the document in our loaded documents
+                const document = allDocuments.find(doc => doc.objectName === documentId);
+                
+                // Set the file name and size if document is found
+                if (document) {
+                    fileName.textContent = document.name || 'Unknown file';
+                    fileSize.textContent = formatFileSize(document.size);
+                } else {
+                    fileName.textContent = documentId;
+                    fileSize.textContent = 'Unknown size';
+                }
+                
+                // Fetch the analysis directly from MinIO, using an API endpoint
+                fetch(`/api/analysis?id=analysis-${analysisId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(response => {
+                        // Check if the response is valid
+                        if (!response.success) {
+                            throw new Error(response.message || 'Failed to load analysis');
+                        }
+                        
+                        const data = response.data;
+                        console.log('Analysis retrieved:', data);
+                        
+                        // Display summary
+                        documentSummary.innerHTML = data.summary || 'No summary available';
+                        
+                        // Display insights
+                        if (data.insights && data.insights.length > 0) {
+                            const insightsList = document.createElement('ul');
+                            insightsList.className = 'insight-list';
+                            
+                            data.insights.forEach(insight => {
+                                const insightItem = document.createElement('li');
+                                insightItem.className = 'insight-item';
+                                insightItem.textContent = insight;
+                                insightsList.appendChild(insightItem);
+                            });
+                            
+                            insightsContainer.innerHTML = '';
+                            insightsContainer.appendChild(insightsList);
+                        } else {
+                            insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
+                        }
+                        
+                        // Display metrics if available
+                        if (data.metrics && Object.keys(data.metrics).length > 0) {
+                            metricsContainer.innerHTML = '';
+                            
+                            for (const [key, value] of Object.entries(data.metrics)) {
+                                const metricCard = document.createElement('div');
+                                metricCard.className = 'metric-card';
+                                
+                                metricCard.innerHTML = `
+                                    <div class="metric-value">${value}</div>
+                                    <div class="metric-label">${key}</div>
+                                `;
+                                
+                                metricsContainer.appendChild(metricCard);
+                            }
+                        } else {
+                            metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                        }
+                        
+                        // Display recommendations
+                        if (data.recommendations && data.recommendations.length > 0) {
+                            recommendationsList.innerHTML = '';
+                            
+                            data.recommendations.forEach(recommendation => {
+                                const recommendationItem = document.createElement('li');
+                                recommendationItem.textContent = recommendation;
+                                recommendationsList.appendChild(recommendationItem);
+                            });
+                        } else {
+                            recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                        }
+                        
+                        // Scroll to analysis results
+                        analysisResults.scrollIntoView({ behavior: 'smooth' });
+                    })
+                    .catch(error => {
+                        console.error('Error loading analysis:', error);
+                        documentSummary.innerHTML = `<div class="error-message">Error loading analysis: ${error.message}</div>`;
+                    });
+            }
+            
+            // Helper function to format file size
+            function formatFileSize(bytes) {
+                if (!bytes || isNaN(bytes)) return 'Unknown size';
+                
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let size = bytes;
+                let unitIndex = 0;
+                
+                while (size >= 1024 && unitIndex < units.length - 1) {
+                    size /= 1024;
+                    unitIndex++;
+                }
+                
+                return `${size.toFixed(1)} ${units[unitIndex]}`;
+            }
+            
             // Function to initialize or display the analytics view
             function initializeAnalyticsView() {
                 // Check if analytics view already exists
@@ -1500,7 +1635,7 @@
                                 <div class="report-name">${doc.name || 'Unnamed document'}</div>
                                 <div class="report-date">Uploaded ${formattedDate}</div>
                                 <div class="report-actions" style="margin-top: 5px;">
-                                    <a href="${doc.url}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
+                                    <a href="/api/download?id=${doc.objectName}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
                                         <i class="fas fa-download"></i> Download
                                     </a>
                                     ${doc.hasAnalysis ? `<a href="#" class="view-analysis-link" data-id="${doc.objectName}" title="View analysis" style="color: #0078ff; font-size: 0.85rem;">
@@ -1599,7 +1734,7 @@
                                 <div class="report-name">${doc.name || 'Unnamed document'}</div>
                                 <div class="report-date">Uploaded ${formattedDate}</div>
                                 <div class="report-actions" style="margin-top: 5px;">
-                                    <a href="${doc.url}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
+                                    <a href="/api/download?id=${doc.objectName}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
                                         <i class="fas fa-download"></i> Download
                                     </a>
                                     ${doc.hasAnalysis ? `<a href="#" class="view-analysis-link" data-id="${doc.objectName}" title="View analysis" style="color: #0078ff; font-size: 0.85rem;">
