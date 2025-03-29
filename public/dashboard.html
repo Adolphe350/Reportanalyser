@@ -1193,7 +1193,7 @@
                 }
                 
                 // Format expected by the server is 'analysis-documentId'
-                // For direct fetch, we add the 'analysis-' prefix to the documentId
+                // Extract base filename regardless of format
                 const analysisId = documentId.replace(/^analysis-/, '');
                 
                 // Show loading state in the analysis results section
@@ -1222,22 +1222,45 @@
                     fileSize.textContent = 'Unknown size';
                 }
                 
-                // Check if analysis exists first by trying the original API endpoint
-                console.log(`Attempting to fetch analysis from: /api/analysis?id=analysis-${encodeURIComponent(analysisId)}`);
+                // Check if analysis exists by trying the original API endpoint
+                // Create a cleaner version of the ID to increase chances of matching
+                // This includes URL encoding special characters like spaces and parentheses
+                const cleanAnalysisId = `analysis-${encodeURIComponent(analysisId)}`;
+                console.log(`Attempting to fetch analysis from: /api/analysis?id=${cleanAnalysisId}`);
                 
-                // Fetch the analysis directly from MinIO, using an API endpoint
-                // Use encodeURIComponent to handle spaces and special characters in the ID
-                fetch(`/api/analysis?id=analysis-${encodeURIComponent(analysisId)}`)
+                // Fetch the analysis from the server API endpoint
+                fetch(`/api/analysis?id=${cleanAnalysisId}`)
                     .then(response => {
                         if (!response.ok) {
-                            console.error(`API returned status ${response.status} for analysis ID: analysis-${analysisId}`);
+                            console.error(`API returned status ${response.status} for analysis ID: ${cleanAnalysisId}`);
+                            
+                            // Try alternative ID formats if the first one failed
+                            if (analysisId.includes(' ') || analysisId.includes('(') || analysisId.includes(')')) {
+                                // Try with simplified ID (remove parentheses)
+                                const simplifiedId = analysisId.replace(/\s*\([^)]*\)/g, '').trim();
+                                
+                                if (simplifiedId !== analysisId) {
+                                    console.log(`First attempt failed. Trying simplified analysis ID: analysis-${simplifiedId}`);
+                                    return fetch(`/api/analysis?id=analysis-${encodeURIComponent(simplifiedId)}`)
+                                        .then(alternativeResponse => {
+                                            if (!alternativeResponse.ok) {
+                                                // Check if there's a specific API message in the error
+                                                return alternativeResponse.json().catch(() => {
+                                                    throw new Error(`Analysis not found for this file`);
+                                                }).then(errorData => {
+                                                    throw new Error(errorData.message || `Analysis not found for this file`);
+                                                });
+                                            }
+                                            return alternativeResponse.json();
+                                        });
+                                }
+                            }
                             
                             // Check if there's a specific API message in the error
                             return response.json().catch(() => {
-                                // If we can't parse JSON from the error response, throw the original error
-                                throw new Error(`API error: ${response.status} ${response.statusText}`);
+                                throw new Error(`Analysis not found for this file`);
                             }).then(errorData => {
-                                throw new Error(errorData.message || `API error: ${response.status}`);
+                                throw new Error(errorData.message || `Analysis not found for this file`);
                             });
                         }
                         return response.json();
@@ -1384,10 +1407,8 @@
                             </div>
                         `;
                         
-                        // Empty other containers
-                        insightsContainer.innerHTML = '';
-                        metricsContainer.innerHTML = '';
-                        recommendationsList.innerHTML = '';
+                        // Scroll to analysis results
+                        analysisResults.scrollIntoView({ behavior: 'smooth' });
                     });
             }
             

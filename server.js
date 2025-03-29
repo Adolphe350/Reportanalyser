@@ -1440,147 +1440,153 @@ async function getAnalysisFromMinIO(fileId) {
   }
   
   try {
-    // Convert the file ID to an analysis ID - handle both direct access and access via filename
-    const isAlreadyAnalysisId = fileId.startsWith('analysis-');
-    const analysisId = isAlreadyAnalysisId ? fileId : `analysis-${fileId.replace(/^\d+\-/, '')}`;
+    // Original fileId for logging
+    const originalFileId = fileId;
+    console.log(`[MINIO] Retrieving analysis for original file ID: ${originalFileId}`);
     
-    console.log(`[MINIO] Retrieving analysis for file: ${fileId}`);
-    console.log(`[MINIO] Converted analysis ID: ${analysisId}`);
+    // Try multiple ways to find the analysis document
+    const possibleIds = [];
     
-    // Log all objects in bucket to debug
+    // 1. If already an analysis ID, use as is
+    if (fileId.startsWith('analysis-')) {
+      possibleIds.push(fileId);
+    } else {
+      // 2. Standard analysis ID - remove timestamp prefix first
+      const baseFileId = fileId.replace(/^\d+\-/, '');
+      possibleIds.push(`analysis-${baseFileId}`);
+      
+      // 3. Also try with original ID (with timestamp prefix)
+      possibleIds.push(`analysis-${fileId}`);
+    }
+    
+    // For each ID, create URL-encoded variants
+    const allPossibleIds = [...possibleIds];
+    
+    // Add URL-encoded variants
+    possibleIds.forEach(id => {
+      if (id.includes(' ') || id.includes('(') || id.includes(')')) {
+        // Replace spaces with %20
+        const encodedId = id.replace(/ /g, '%20')
+                           .replace(/\(/g, '%28')
+                           .replace(/\)/g, '%29');
+        if (!allPossibleIds.includes(encodedId)) {
+          allPossibleIds.push(encodedId);
+        }
+        
+        // Also try without parentheses entirely
+        const noParensId = id.replace(/\(.*?\)/g, '').replace(/  /g, ' ').trim();
+        if (noParensId !== id && !allPossibleIds.includes(`analysis-${noParensId}`)) {
+          allPossibleIds.push(`analysis-${noParensId}`);
+        }
+      }
+    });
+    
+    console.log(`[MINIO] Will try these possible IDs: ${allPossibleIds.join(', ')}`);
+    
+    // First list all analysis objects to see what's available
+    let allAnalysisObjects = [];
     try {
       const stream = await minioClient.listObjects(minioBucket, '', true);
-      const analysisObjects = [];
       
       await new Promise((resolve, reject) => {
         stream.on('data', (obj) => {
           if (obj.name.startsWith('analysis-')) {
-            analysisObjects.push(obj.name);
-            console.log(`[MINIO] Found analysis object: ${obj.name}`);
+            allAnalysisObjects.push(obj.name);
           }
         });
         
-        stream.on('end', () => {
-          console.log(`[MINIO] Total analysis objects found: ${analysisObjects.length}`);
-          
-          // Check if our target analysis ID is in the list
-          const matchingObject = analysisObjects.find(name => {
-            // Try different matching strategies:
-            // 1. Direct match
-            if (name === analysisId) {
-              console.log(`[MINIO] Direct match found for ${analysisId}`);
-              return true;
-            }
-            
-            // 2. Match ignoring spaces in filenames (replacing them with %20)
-            const encodedAnalysisId = analysisId.replace(/ /g, '%20');
-            if (name === encodedAnalysisId) {
-              console.log(`[MINIO] URL-encoded match found for ${encodedAnalysisId}`);
-              return true;
-            }
-            
-            // 3. If the analyzed file has spaces, the analysis file may have spaces or %20
-            const decodedName = name.replace(/%20/g, ' ');
-            if (decodedName === analysisId) {
-              console.log(`[MINIO] Decoded match found for ${analysisId}`);
-              return true;
-            }
-            
-            return false;
-          });
-          
-          if (matchingObject) {
-            console.log(`[MINIO] Found matching analysis object: ${matchingObject}`);
-          } else {
-            console.log(`[MINIO] No matching analysis object found for ${analysisId}`);
-          }
-          
-          resolve();
-        });
-        
+        stream.on('end', resolve);
         stream.on('error', reject);
       });
+      
+      console.log(`[MINIO] Found ${allAnalysisObjects.length} analysis objects in bucket`);
+      
+      // Log the first few objects to help with debugging
+      if (allAnalysisObjects.length > 0) {
+        console.log(`[MINIO] Sample analysis objects: ${allAnalysisObjects.slice(0, 5).join(', ')}${allAnalysisObjects.length > 5 ? '...' : ''}`);
+      }
       
     } catch (listError) {
       console.error(`[MINIO] Error listing objects: ${listError.message}`);
     }
     
-    // Check if the analysis object exists
-    try {
-      await minioClient.statObject(minioBucket, analysisId);
-      console.log(`[MINIO] Analysis object ${analysisId} found`);
-    } catch (err) {
-      console.log(`[MINIO] Analysis object ${analysisId} not found: ${err.message}`);
+    // Try to find a fuzzy match if we have specific markers in the original fileId
+    if (originalFileId.includes('(') || originalFileId.includes(')') || originalFileId.includes(' ')) {
+      console.log(`[MINIO] Original ID has special characters, trying fuzzy matching`);
       
-      // Try alternatives if the original ID contains spaces
-      if (analysisId.includes(' ')) {
-        const encodedId = analysisId.replace(/ /g, '%20');
-        try {
-          console.log(`[MINIO] Trying URL-encoded ID: ${encodedId}`);
-          await minioClient.statObject(minioBucket, encodedId);
-          console.log(`[MINIO] Found analysis with encoded ID: ${encodedId}`);
-          
-          // If we found it with the encoded ID, update the analysis ID
-          const dataStream = await minioClient.getObject(minioBucket, encodedId);
-          
-          return new Promise((resolve, reject) => {
-            let analysisData = '';
-            
-            dataStream.on('data', chunk => {
-              analysisData += chunk;
-            });
-            
-            dataStream.on('end', () => {
-              console.log(`[MINIO] Successfully retrieved analysis data with encoded ID (${analysisData.length} bytes)`);
-              try {
-                const parsedData = JSON.parse(analysisData);
-                resolve(parsedData);
-              } catch (err) {
-                console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-                reject(err);
-              }
-            });
-            
-            dataStream.on('error', err => {
-              console.error(`[MINIO] Error reading analysis data stream: ${err.message}`);
-              reject(err);
-            });
+      // Extract the base filename without timestamp and without extension
+      const match = originalFileId.match(/(?:\d+-)?([^.]+)/);
+      if (match && match[1]) {
+        const baseNameToMatch = match[1].replace(/\(\d+\)/g, '').trim();
+        console.log(`[MINIO] Looking for analysis objects containing: ${baseNameToMatch}`);
+        
+        // Find any analysis object containing this base name
+        const fuzzyMatches = allAnalysisObjects.filter(name => {
+          // Decode the name for comparison
+          const decodedName = decodeURIComponent(name);
+          return decodedName.includes(baseNameToMatch);
+        });
+        
+        if (fuzzyMatches.length > 0) {
+          console.log(`[MINIO] Found ${fuzzyMatches.length} potential fuzzy matches: ${fuzzyMatches.join(', ')}`);
+          // Add these to our list of IDs to try
+          fuzzyMatches.forEach(match => {
+            if (!allPossibleIds.includes(match)) {
+              allPossibleIds.push(match);
+            }
           });
-          
-        } catch (encodedErr) {
-          console.log(`[MINIO] Encoded ID not found either: ${encodedErr.message}`);
         }
       }
-      
-      return null;
     }
     
-    // Get the analysis object from MinIO
-    const dataStream = await minioClient.getObject(minioBucket, analysisId);
+    // Try each possible ID in sequence
+    for (const possibleId of allPossibleIds) {
+      console.log(`[MINIO] Trying to retrieve analysis with ID: ${possibleId}`);
+      
+      try {
+        // Check if this object exists
+        await minioClient.statObject(minioBucket, possibleId);
+        console.log(`[MINIO] Found analysis object with ID: ${possibleId}`);
+        
+        // Get the analysis object from MinIO
+        const dataStream = await minioClient.getObject(minioBucket, possibleId);
+        
+        const analysisData = await new Promise((resolve, reject) => {
+          let data = '';
+          
+          dataStream.on('data', chunk => {
+            data += chunk;
+          });
+          
+          dataStream.on('end', () => {
+            console.log(`[MINIO] Successfully retrieved analysis data with ID ${possibleId} (${data.length} bytes)`);
+            try {
+              const parsedData = JSON.parse(data);
+              console.log(`[MINIO] Successfully parsed JSON for ${possibleId}`);
+              resolve(parsedData);
+            } catch (err) {
+              console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
+              reject(err);
+            }
+          });
+          
+          dataStream.on('error', err => {
+            console.error(`[MINIO] Error reading analysis data stream: ${err.message}`);
+            reject(err);
+          });
+        });
+        
+        return analysisData;
+      } catch (err) {
+        console.log(`[MINIO] Could not find or access analysis with ID ${possibleId}: ${err.message}`);
+        // Continue to the next ID
+      }
+    }
     
-    return new Promise((resolve, reject) => {
-      let analysisData = '';
-      
-      dataStream.on('data', chunk => {
-        analysisData += chunk;
-      });
-      
-      dataStream.on('end', () => {
-        console.log(`[MINIO] Successfully retrieved analysis data (${analysisData.length} bytes)`);
-        try {
-          const parsedData = JSON.parse(analysisData);
-          resolve(parsedData);
-        } catch (err) {
-          console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-          reject(err);
-        }
-      });
-      
-      dataStream.on('error', err => {
-        console.error(`[MINIO] Error reading analysis data stream: ${err.message}`);
-        reject(err);
-      });
-    });
+    // If we get here, we couldn't find any matching analysis
+    console.log(`[MINIO] No matching analysis found after trying ${allPossibleIds.length} possible IDs`);
+    return null;
+    
   } catch (err) {
     console.error(`[MINIO] Error retrieving analysis from MinIO: ${err.message}`);
     return null;
