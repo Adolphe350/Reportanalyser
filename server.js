@@ -43,7 +43,7 @@ const initPdfLib = async () => {
 // Initialize MinIO client
 const Minio = require('minio');
 let minioClient = null;
-let minioBucket = process.env.MINIO_BUCKET || 'report-analyzer';
+let minioBucket = process.env.MINIO_BUCKET || 'generalstorage';
 let minioAvailable = false;
 
 // Try to initialize MinIO client
@@ -80,13 +80,14 @@ async function ensureMinIOBucket() {
   if (!minioAvailable || !minioClient) return false;
   
   try {
+    console.log(`[MINIO] Checking if bucket '${minioBucket}' exists...`);
     const exists = await minioClient.bucketExists(minioBucket);
     if (exists) {
       console.log(`[MINIO] Bucket '${minioBucket}' already exists`);
       return true;
     }
     
-    console.log(`[MINIO] Creating bucket '${minioBucket}'`);
+    console.log(`[MINIO] Bucket '${minioBucket}' does not exist, creating it now...`);
     await minioClient.makeBucket(minioBucket);
     console.log(`[MINIO] Bucket '${minioBucket}' created successfully`);
     
@@ -108,9 +109,23 @@ async function ensureMinIOBucket() {
     console.log(`[MINIO] Bucket policy set to allow public reads`);
     */
     
+    // List all available buckets for verification
+    const buckets = await minioClient.listBuckets();
+    console.log(`[MINIO] Available buckets: ${buckets.map(b => b.name).join(', ')}`);
+    
     return true;
   } catch (err) {
-    console.error(`[MINIO] Error checking/creating bucket: ${err.message}`);
+    console.error(`[MINIO] Error checking/creating bucket '${minioBucket}': ${err.message}`);
+    console.error(`[MINIO] Error details: ${err.stack}`);
+    
+    // Try to list available buckets even if there was an error
+    try {
+      const buckets = await minioClient.listBuckets();
+      console.log(`[MINIO] Available buckets despite error: ${buckets.map(b => b.name).join(', ')}`);
+    } catch (listErr) {
+      console.error(`[MINIO] Could not list buckets: ${listErr.message}`);
+    }
+    
     return false;
   }
 }
@@ -139,17 +154,23 @@ async function uploadFileToMinIO(fileBuffer, fileName, contentType) {
       'Content-Type': contentType
     });
     
-    console.log(`[MINIO] File uploaded successfully to MinIO`);
+    console.log(`[MINIO] File uploaded successfully to MinIO bucket '${minioBucket}'`);
     
     // Generate URL for the uploaded file
     const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + objectName;
+    
+    // Log more details about the uploaded file for verification
+    console.log(`[MINIO] File URL: ${fileUrl}`);
+    console.log(`[MINIO] Object storage details: Bucket=${minioBucket}, Object=${objectName}, Size=${fileBuffer.length} bytes`);
+    
     return {
       bucket: minioBucket,
       objectName: objectName,
-      url: fileUrl
+      url: fileUrl,
+      size: fileBuffer.length
     };
   } catch (err) {
-    console.error(`[MINIO] Error uploading file to MinIO: ${err.message}`);
+    console.error(`[MINIO] Error uploading file to MinIO bucket '${minioBucket}': ${err.message}`);
     return null;
   }
 }
@@ -837,7 +858,7 @@ function handleFileUpload(req, res) {
       // Upload to MinIO if available
       let minioFileInfo = null;
       if (minioAvailable) {
-        console.log(`[UPLOAD] Uploading file to MinIO storage`);
+        console.log(`[UPLOAD] Uploading file to MinIO storage (bucket: '${minioBucket}')`);
         minioFileInfo = await uploadFileToMinIO(fileBuffer, filename, fileType);
       }
       
@@ -867,6 +888,15 @@ function handleFileUpload(req, res) {
           type: fileType,
           savedAs: uniqueFilename,
           storage: minioFileInfo ? 'minio' : 'local',
+          storageDetails: minioFileInfo ? {
+            bucket: minioFileInfo.bucket,
+            objectName: minioFileInfo.objectName,
+            size: minioFileInfo.size,
+            url: minioFileInfo.url
+          } : {
+            path: `uploads/${uniqueFilename}`,
+            size: fileBuffer.length
+          },
           location: minioFileInfo ? minioFileInfo.url : `uploads/${uniqueFilename}`
         },
         analysis: {
