@@ -5,14 +5,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    volumes:
+      - .:/app
     environment:
       NODE_ENV: production
-      # Define environment variables for Coolify to populate
       DATABASE_URL: ${DATABASE_URL}
       SECRET_KEY: ${SECRET_KEY}
       PORT: 9000
-    # NOTE: Don't define ports here as Coolify will handle this
-    # The following labels are used by Coolify's proxy (Traefik)
     labels:
       - traefik.enable=true
       - "traefik.http.routers.reportanalyser.rule=Host(`${HOST_DOMAIN}`)"
@@ -20,8 +19,4 @@ services:
       - "traefik.http.routers.reportanalyser-secure.rule=Host(`${HOST_DOMAIN}`)"
       - traefik.http.routers.reportanalyser-secure.entryPoints=https
       - traefik.http.routers.reportanalyser-secure.tls=true
-      # Health check - Use port 9000 explicitly
-      - "traefik.http.services.reportanalyser.loadbalancer.server.port=9000"
-      # Add proper health check to ensure the app is ready
-      - "traefik.http.services.reportanalyser.loadbalancer.healthcheck.path=/api/health"
-      - "traefik.http.services.reportanalyser.loadbalancer.healthcheck.interval=10s" 
+      - "traefik.http.services.reportanalyser.loadbalancer.server.port=9000" 
