@@ -1434,146 +1434,107 @@ async function saveAnalysisToMinIO(analysisResults, fileName, fileId) {
 
 // Function to retrieve analysis results from MinIO by file ID
 async function getAnalysisFromMinIO(fileId) {
-    console.log(`[MINIO] Attempting to retrieve analysis results for object: ${fileId}`);
-    
-    if (!fileId) {
-        console.error('[MINIO] Error: No file ID provided');
-        return null;
-    }
-
-    // Create multiple possible IDs for retrieving the analysis (including handling parentheses and spaces)
-    const possibleIds = [];
-    
-    // Original ID (without analysis- prefix)
-    possibleIds.push(fileId);
-    
-    // With analysis- prefix (common format)
-    const baseNameWithoutTimestamp = fileId.includes('-') ? fileId.split('-').slice(1).join('-') : fileId;
-    possibleIds.push(`analysis-${baseNameWithoutTimestamp}`);
-    
-    // Without timestamp, just the filename part
-    possibleIds.push(`analysis-${baseNameWithoutTimestamp}`);
-    
-    // Remove parentheses and spaces version
-    const cleanedId = baseNameWithoutTimestamp.replace(/\s+/g, '').replace(/\([^)]*\)/g, '');
-    possibleIds.push(`analysis-${cleanedId}`);
-    
-    // Simple prefix version
-    possibleIds.push(`analysis-${fileId}`);
-    
-    // Log all the IDs we'll try
-    console.log(`[MINIO] Will try these analysis IDs: ${JSON.stringify(possibleIds)}`);
-    
-    // Get the list of all objects in the bucket
-    const objects = await listObjectsInBucket();
-    console.log(`[MINIO] Found ${objects.length} total objects in bucket`);
-    
-    // Log analysis objects
-    const analysisObjects = objects.filter(obj => obj.name.includes('analysis-'));
-    console.log(`[MINIO] Analysis objects in bucket: ${analysisObjects.length}`);
-    console.log(`[MINIO] Analysis object names: ${JSON.stringify(analysisObjects.map(obj => obj.name))}`);
-    
-    // First try exact matches with our possible IDs
-    for (const id of possibleIds) {
-        try {
-            console.log(`[MINIO] Trying to retrieve object with ID: ${id}`);
-            const analysisData = await minioClient.getObject(bucketName, id);
-            
-            let chunks = [];
-            let dataLength = 0;
-            
-            analysisData.on('data', function(chunk) {
-                chunks.push(chunk);
-                dataLength += chunk.length;
-            });
-            
-            const buffer = await new Promise((resolve, reject) => {
-                analysisData.on('end', function() {
-                    const buf = Buffer.concat(chunks, dataLength);
-                    console.log(`[MINIO] Successfully retrieved analysis data (${buf.length} bytes) for ID: ${id}`);
-                    resolve(buf);
-                });
-                
-                analysisData.on('error', function(err) {
-                    console.log(`[MINIO] Error retrieving analysis data for ID ${id}: ${err}`);
-                    resolve(null);
-                });
-            });
-            
-            if (buffer) {
-                return buffer;
-            }
-        } catch (err) {
-            console.log(`[MINIO] Error in getObject for ID ${id}: ${err.message}`);
-            // Continue to try next ID
-        }
-    }
-    
-    // If exact matches failed, try fuzzy matching with the base filename
-    console.log('[MINIO] Exact matches failed, trying fuzzy matching');
-    
-    // Extract core filename (remove timestamp and extensions)
-    let coreFilename = '';
-    if (fileId.includes('-')) {
-        coreFilename = fileId.split('-').slice(1).join('-');
-        if (coreFilename.includes('.')) {
-            coreFilename = coreFilename.split('.')[0];
-        }
-        // Remove any parentheses and numbers inside
-        coreFilename = coreFilename.replace(/\s*\(\d+\)\s*/g, '');
-    }
-    
-    if (coreFilename) {
-        console.log(`[MINIO] Trying fuzzy matching with core filename: ${coreFilename}`);
-        
-        // Find analysis objects that contain our core filename
-        const matchingObjects = analysisObjects.filter(obj => obj.name.includes(coreFilename));
-        console.log(`[MINIO] Found ${matchingObjects.length} potential matches: ${JSON.stringify(matchingObjects.map(obj => obj.name))}`);
-        
-        for (const obj of matchingObjects) {
-            try {
-                console.log(`[MINIO] Trying to retrieve matched object: ${obj.name}`);
-                const analysisData = await minioClient.getObject(bucketName, obj.name);
-                
-                let chunks = [];
-                let dataLength = 0;
-                
-                analysisData.on('data', function(chunk) {
-                    chunks.push(chunk);
-                    dataLength += chunk.length;
-                });
-                
-                const buffer = await new Promise((resolve, reject) => {
-                    analysisData.on('end', function() {
-                        const buf = Buffer.concat(chunks, dataLength);
-                        console.log(`[MINIO] Successfully retrieved analysis data (${buf.length} bytes) for fuzzy matched ID: ${obj.name}`);
-                        resolve(buf);
-                    });
-                    
-                    analysisData.on('error', function(err) {
-                        console.log(`[MINIO] Error retrieving analysis data for fuzzy matched ID ${obj.name}: ${err}`);
-                        resolve(null);
-                    });
-                });
-                
-                if (buffer) {
-                    return buffer;
-                }
-            } catch (err) {
-                console.log(`[MINIO] Error in getObject for fuzzy matched ID ${obj.name}: ${err.message}`);
-                // Continue to try next match
-            }
-        }
-    }
-
-    console.log(`[MINIO] No analysis data found for file ID: ${fileId} after trying all methods`);
+  if (!minioClient) {
+    console.log('[MINIO] MinIO client not available, cannot retrieve analysis');
     return null;
+  }
+
+  try {
+    console.log(`[MINIO] Retrieving analysis results for object ${fileId} (analysis ID: analysis-${fileId.replace(/^\d+\-/, '')})`);
+    
+    // First try the original approach that works in the local environment
+    // If the ID doesn't already start with 'analysis-', prepend it and remove the timestamp prefix
+    let analysisId;
+    if (fileId.startsWith('analysis-')) {
+      analysisId = fileId;
+    } else {
+      // Remove the timestamp prefix (e.g., 1743274452783-)
+      const baseFileName = fileId.replace(/^\d+\-/, '');
+      analysisId = `analysis-${baseFileName}`;
+    }
+    
+    // Log the ID we're trying
+    console.log(`[MINIO] Trying to retrieve analysis with ID: ${analysisId}`);
+    
+    try {
+      // Get the analysis object from MinIO
+      const dataStream = await minioClient.getObject(bucketName, analysisId);
+      
+      // Read and return the analysis data
+      return new Promise((resolve, reject) => {
+        let dataBuffer = '';
+        
+        dataStream.on('data', chunk => {
+          dataBuffer += chunk;
+        });
+        
+        dataStream.on('end', () => {
+          console.log(`[MINIO] Successfully retrieved analysis data (${dataBuffer.length} bytes)`);
+          try {
+            const analysisData = JSON.parse(dataBuffer);
+            resolve(analysisData);
+          } catch (err) {
+            console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
+            reject(err);
+          }
+        });
+        
+        dataStream.on('error', err => {
+          console.error(`[MINIO] Error reading analysis: ${err.message}`);
+          reject(err);
+        });
+      });
+    } catch (err) {
+      console.log(`[MINIO] Error retrieving analysis with ID ${analysisId}: ${err.message}`);
+      // If the first attempt failed and we didn't already try with the full ID, try that as fallback
+      if (!fileId.startsWith('analysis-')) {
+        const fullAnalysisId = `analysis-${fileId}`;
+        console.log(`[MINIO] Trying alternative ID: ${fullAnalysisId}`);
+        
+        try {
+          const dataStream = await minioClient.getObject(bucketName, fullAnalysisId);
+          
+          return new Promise((resolve, reject) => {
+            let dataBuffer = '';
+            
+            dataStream.on('data', chunk => {
+              dataBuffer += chunk;
+            });
+            
+            dataStream.on('end', () => {
+              console.log(`[MINIO] Successfully retrieved analysis data with alternative ID (${dataBuffer.length} bytes)`);
+              try {
+                const analysisData = JSON.parse(dataBuffer);
+                resolve(analysisData);
+              } catch (err) {
+                console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
+                reject(err);
+              }
+            });
+            
+            dataStream.on('error', err => {
+              console.error(`[MINIO] Error reading analysis with alternative ID: ${err.message}`);
+              reject(err);
+            });
+          });
+        } catch (altErr) {
+          console.log(`[MINIO] Error retrieving analysis with alternative ID ${fullAnalysisId}: ${altErr.message}`);
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+  } catch (err) {
+    console.error(`[MINIO] Error in getAnalysisFromMinIO: ${err.message}`);
+    return null;
+  }
 }
 
 // Add a new API endpoint to get analysis for a specific file
 async function handleGetAnalysis(req, res) {
+  console.log(`[API] Received get analysis request`);
   console.log(`[API] Starting get analysis handler`);
-  const start = Date.now();
   
   try {
     // Get the file ID from the query parameters
@@ -1596,107 +1557,34 @@ async function handleGetAnalysis(req, res) {
     
     if (!analysisData) {
       console.log(`[API] No analysis found for file ID: ${fileId}`);
-      
-      // Try a fallback approach - if the ID doesn't start with "analysis-", 
-      // we might be dealing with a regular file that has an associated analysis
-      if (!fileId.startsWith('analysis-')) {
-        console.log(`[API] Trying to find analysis for regular file ID: ${fileId}`);
-        // Try with "analysis-" prefix
-        const alternateId = `analysis-${fileId}`;
-        console.log(`[API] Checking alternate ID: ${alternateId}`);
-        
-        const alternateAnalysisData = await getAnalysisFromMinIO(alternateId);
-        if (alternateAnalysisData) {
-          console.log(`[API] Found analysis using alternate ID: ${alternateId}`);
-          
-          // Return success with the alternate analysis data
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Connection': 'close',
-            'X-Response-Time': `${Date.now() - start}ms`
-          });
-          
-          res.end(JSON.stringify({
-            success: true,
-            message: 'Analysis retrieved successfully (using alternate ID)',
-            data: alternateAnalysisData
-          }));
-          return;
-        }
-      }
-      
-      // No analysis found with any approach
-      res.writeHead(404, {
-        'Content-Type': 'application/json',
-        'Connection': 'close'
-      });
-      
-      res.end(JSON.stringify({
+      return res.end(JSON.stringify({
         success: false,
-        message: 'Analysis not found for this file'
-      }));
-      return;
-    }
-    
-    // Enhanced debugging of analysis data structure
-    console.log(`[API] Analysis data structure: ${Object.keys(analysisData).join(', ')}`);
-    
-    // Check if analysis property exists and log its structure
-    if (analysisData.analysis) {
-      console.log(`[API] Analysis nested structure: ${Object.keys(analysisData.analysis).join(', ')}`);
-      
-      // Make a copy to avoid modifying the original
-      const returnData = {...analysisData};
-      
-      // If analysis is nested but there is no root level summary/insights/etc,
-      // copy the analysis properties to the root for backward compatibility
-      if (!returnData.summary && returnData.analysis.summary) {
-        console.log('[API] Copying nested analysis properties to root level for compatibility');
-        returnData.summary = returnData.analysis.summary;
-        returnData.keyInsights = returnData.analysis.keyInsights || returnData.analysis.insights;
-        returnData.metrics = returnData.analysis.metrics;
-        returnData.recommendations = returnData.analysis.recommendations;
-      }
-      
-      // Return the improved analysis data
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Connection': 'close',
-        'X-Response-Time': `${Date.now() - start}ms`
-      });
-      
-      res.end(JSON.stringify({
-        success: true,
-        message: 'Analysis retrieved successfully',
-        data: returnData
-      }));
-      return;
+        message: 'Analysis not found',
+        error: 'The requested analysis does not exist'
+      }), 'utf8');
     }
     
     // Return the analysis data
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Connection': 'close',
-      'X-Response-Time': `${Date.now() - start}ms`
-    });
+    console.log(`[API] Returning analysis data for file ID: ${fileId}`);
     
-    res.end(JSON.stringify({
+    // Format the response to match the expected format in the client
+    const response = {
       success: true,
       message: 'Analysis retrieved successfully',
       data: analysisData
-    }));
+    };
     
-  } catch (err) {
-    console.error(`[API] Error retrieving analysis: ${err.message}`);
-    console.error(err.stack);
-    res.writeHead(500, {
-      'Content-Type': 'application/json',
-      'Connection': 'close'
-    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(response), 'utf8');
+    
+  } catch (error) {
+    console.error(`[API] Error retrieving analysis: ${error.message}`);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: false,
-      message: `Error retrieving analysis: ${err.message}`
-    }));
+      message: 'Error retrieving analysis',
+      error: error.message
+    }), 'utf8');
   }
 }
 

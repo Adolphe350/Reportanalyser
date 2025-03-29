@@ -1184,520 +1184,194 @@
             
             // Function to load analysis for a specific document
             function loadAnalysisForDocument(documentId) {
-                console.log(`Loading analysis for document ID: ${documentId}`);
+                console.log('Loading analysis for document:', documentId);
 
+                // Check if document ID is valid
                 if (!documentId) {
-                    showMessage('No document ID provided', 'error');
+                    console.error('Invalid document ID for analysis');
                     return;
                 }
 
-                // Show loading state
-                document.getElementById('document-info').style.display = 'block';
-                document.getElementById('document-name').textContent = documentId;
-                document.getElementById('analysis-content').innerHTML = '<div class="loading">Loading analysis...</div>';
-
-                // Extract the base filename without timestamp
-                const baseName = documentId.includes('-') 
-                    ? documentId.split('-').slice(1).join('-') 
-                    : documentId;
+                // Format expected by the server is 'analysis-documentId'
+                // Extract base filename regardless of format
+                const analysisId = documentId.replace(/^analysis-/, '');
                 
-                console.log(`Base filename for analysis: ${baseName}`);
-
-                // Create several possible IDs for the analysis
-                const possibleIds = [];
+                // Show loading state in the analysis results section
+                analysisResults.style.display = 'block';
+                const documentSummary = document.getElementById('document-summary');
+                const insightsContainer = document.getElementById('insights-container');
+                const metricsContainer = document.getElementById('metrics-container');
+                const recommendationsList = document.getElementById('recommendations-list');
+                const fileName = document.getElementById('file-name');
+                const fileSize = document.getElementById('file-size');
                 
-                // Standard format with analysis- prefix (most common scenario)
-                possibleIds.push(`analysis-${documentId}`);
+                documentSummary.innerHTML = '<div class="loading-spinner">Loading analysis...</div>';
+                insightsContainer.innerHTML = '';
+                metricsContainer.innerHTML = '';
+                recommendationsList.innerHTML = '';
                 
-                // Try with just the base filename (without timestamp)
-                possibleIds.push(`analysis-${baseName}`);
+                // Find the document in our loaded documents
+                const docInfo = allDocuments.find(doc => doc.objectName === documentId);
                 
-                // Try a simplified version (no spaces or parentheses)
-                const simplifiedId = baseName.replace(/\s+/g, '').replace(/\([^)]*\)/g, '');
-                if (simplifiedId !== baseName) {
-                    possibleIds.push(`analysis-${simplifiedId}`);
-                }
-                
-                console.log(`Will try these analysis IDs: ${JSON.stringify(possibleIds)}`);
-                
-                // Function to try fetching with a specific ID
-                function tryFetchAnalysis(analysisId, attemptNumber = 1) {
-                    return new Promise((resolve, reject) => {
-                        console.log(`Attempt ${attemptNumber}: Fetching analysis with ID: ${analysisId}`);
-                        
-                        fetch(`/api/analysis?id=${encodeURIComponent(analysisId)}`)
-                            .then(response => {
-                                console.log(`API response status: ${response.status} for ID: ${analysisId}`);
-                                if (response.ok) {
-                                    return response.json();
-                                } else {
-                                    throw new Error(`API returned status ${response.status} for analysis ID: ${analysisId}`);
-                                }
-                            })
-                            .then(data => {
-                                console.log('Analysis data structure:', Object.keys(data));
-                                if (data.data) {
-                                    console.log('Analysis data.data structure:', Object.keys(data.data));
-                                    if (data.data.analysis) {
-                                        console.log('Analysis data.data.analysis structure:', Object.keys(data.data.analysis));
-                                    }
-                                }
-                                resolve(data);
-                            })
-                            .catch(error => {
-                                console.error(error);
-                                reject(error);
-                            });
-                    });
-                }
-                
-                // Try each ID in sequence
-                let currentAttempt = 0;
-                
-                function tryNextId() {
-                    if (currentAttempt >= possibleIds.length) {
-                        throw new Error('Analysis not found for this file');
-                    }
-                    
-                    const currentId = possibleIds[currentAttempt];
-                    currentAttempt++;
-                    
-                    return tryFetchAnalysis(currentId, currentAttempt)
-                        .catch(error => {
-                            console.log(`Attempt ${currentAttempt} failed. ${possibleIds.length - currentAttempt} attempts remaining.`);
-                            if (currentAttempt < possibleIds.length) {
-                                return tryNextId();
-                            }
-                            throw error;
-                        });
-                }
-                
-                // Start the sequence of attempts
-                tryNextId()
-                    .then(data => {
-                        console.log('Successfully retrieved analysis data');
-                        
-                        // Check the structure to know how to access the data
-                        let analysisData = null;
-                        if (data.data && data.data.analysis) {
-                            analysisData = data.data.analysis;
-                            console.log('Using nested analysis data structure');
-                        } else if (data.data) {
-                            analysisData = data.data;
-                            console.log('Using data.data structure');
-                        } else {
-                            analysisData = data;
-                            console.log('Using root data structure');
-                        }
-                        
-                        // Display the analysis content
-                        displayAnalysisContent(analysisData);
-                    })
-                    .catch(error => {
-                        console.error('Error loading analysis:', error);
-                        document.getElementById('analysis-content').innerHTML = 
-                            `<div class="error">Failed to load analysis: ${error.message}</div>`;
-                    });
-            }
-
-            function displayAnalysisContent(analysisData) {
-                console.log('Displaying analysis content with data:', analysisData);
-                
-                // Clear the loading state
-                document.getElementById('analysis-content').innerHTML = '';
-                
-                // Create the content container
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'analysis-full-content';
-                
-                // Check if we have structured data
-                const hasStructuredData = analysisData && (
-                    analysisData.summary || 
-                    analysisData.keyInsights || 
-                    analysisData.insights || 
-                    analysisData.metrics || 
-                    analysisData.recommendations
-                );
-                
-                if (hasStructuredData) {
-                    // 1. Document Summary Section
-                    if (analysisData.summary) {
-                        const summarySection = document.createElement('div');
-                        summarySection.className = 'analysis-section';
-                        summarySection.innerHTML = `
-                            <h3>Document Summary</h3>
-                            <p>${analysisData.summary}</p>
-                        `;
-                        contentDiv.appendChild(summarySection);
-                    }
-                    
-                    // 2. Key Insights Section
-                    const insights = analysisData.keyInsights || analysisData.insights || [];
-                    if (insights && insights.length > 0) {
-                        const insightsSection = document.createElement('div');
-                        insightsSection.className = 'analysis-section';
-                        insightsSection.innerHTML = '<h3>Key Insights</h3>';
-                        
-                        const insightsList = document.createElement('ul');
-                        insights.forEach(insight => {
-                            const insightItem = document.createElement('li');
-                            insightItem.textContent = insight;
-                            insightsList.appendChild(insightItem);
-                        });
-                        
-                        insightsSection.appendChild(insightsList);
-                        contentDiv.appendChild(insightsSection);
-                    }
-                    
-                    // 3. Metrics Section
-                    const metrics = analysisData.metrics;
-                    if (metrics) {
-                        const metricsSection = document.createElement('div');
-                        metricsSection.className = 'analysis-section';
-                        metricsSection.innerHTML = '<h3>Metrics</h3>';
-                        
-                        const metricsTable = document.createElement('table');
-                        metricsTable.className = 'metrics-table';
-                        
-                        // Add rows for each metric
-                        Object.entries(metrics).forEach(([key, value]) => {
-                            const row = document.createElement('tr');
-                            
-                            const keyCell = document.createElement('td');
-                            keyCell.className = 'metric-key';
-                            keyCell.textContent = key;
-                            
-                            const valueCell = document.createElement('td');
-                            valueCell.className = 'metric-value';
-                            
-                            // Handle different value types
-                            if (typeof value === 'object') {
-                                if (Array.isArray(value)) {
-                                    valueCell.textContent = value.join(', ');
-                                } else {
-                                    valueCell.textContent = JSON.stringify(value);
-                                }
-                            } else {
-                                valueCell.textContent = value;
-                            }
-                            
-                            row.appendChild(keyCell);
-                            row.appendChild(valueCell);
-                            metricsTable.appendChild(row);
-                        });
-                        
-                        metricsSection.appendChild(metricsTable);
-                        contentDiv.appendChild(metricsSection);
-                    }
-                    
-                    // 4. Recommendations Section
-                    const recommendations = analysisData.recommendations || [];
-                    if (recommendations && recommendations.length > 0) {
-                        const recommendationsSection = document.createElement('div');
-                        recommendationsSection.className = 'analysis-section';
-                        recommendationsSection.innerHTML = '<h3>Recommendations</h3>';
-                        
-                        const recommendationsList = document.createElement('ul');
-                        recommendations.forEach(recommendation => {
-                            const recommendationItem = document.createElement('li');
-                            recommendationItem.textContent = recommendation;
-                            recommendationsList.appendChild(recommendationItem);
-                        });
-                        
-                        recommendationsSection.appendChild(recommendationsList);
-                        contentDiv.appendChild(recommendationsSection);
-                    }
+                // Set the file name and size if document is found
+                if (docInfo) {
+                    fileName.textContent = docInfo.name || 'Unknown file';
+                    fileSize.textContent = formatFileSize(docInfo.size);
                 } else {
-                    // If no structured data, display raw JSON
-                    console.warn('No structured analysis data found, displaying raw data');
-                    
-                    const rawDataSection = document.createElement('div');
-                    rawDataSection.className = 'analysis-section';
-                    rawDataSection.innerHTML = `
-                        <h3>Analysis Data</h3>
-                        <pre>${JSON.stringify(analysisData, null, 2)}</pre>
-                    `;
-                    contentDiv.appendChild(rawDataSection);
+                    fileName.textContent = documentId;
+                    fileSize.textContent = 'Unknown size';
                 }
                 
-                // Add the content to the page
-                document.getElementById('analysis-content').appendChild(contentDiv);
-            }
-            
-            // Helper function to format file size
-            function formatFileSize(bytes) {
-                if (!bytes || isNaN(bytes)) return 'Unknown size';
+                // Simple approach - we have a server endpoint that handles the various ID formats 
+                console.log(`Fetching analysis from: /api/analysis?id=${analysisId}`);
                 
-                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-                let size = bytes;
-                let unitIndex = 0;
-                
-                while (size >= 1024 && unitIndex < units.length - 1) {
-                    size /= 1024;
-                    unitIndex++;
-                }
-                
-                return `${size.toFixed(1)} ${units[unitIndex]}`;
-            }
-            
-            // Function to initialize or display the analytics view
-            function initializeAnalyticsView() {
-                // Check if analytics view already exists
-                let analyticsView = document.querySelector('.analytics-view');
-                
-                // If analytics view doesn't exist, create it
-                if (!analyticsView) {
-                    analyticsView = document.createElement('div');
-                    analyticsView.className = 'analytics-view';
-                    analyticsView.style.backgroundColor = 'white';
-                    analyticsView.style.borderRadius = '8px';
-                    analyticsView.style.boxShadow = '0 3px 10px rgba(0, 0, 0, 0.05)';
-                    analyticsView.style.padding = '30px';
-                    analyticsView.style.marginBottom = '30px';
-                    
-                    // Create analytics content
-                    analyticsView.innerHTML = `
-                        <div class="analytics-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
-                            <h2>Analytics Dashboard</h2>
-                            <button id="refresh-analytics" class="btn btn-outline">Refresh Data</button>
-                        </div>
-                        
-                        <div class="analytics-overview" style="margin-bottom: 30px;">
-                            <h3>Documents Overview</h3>
-                            <div class="analytics-cards" style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
-                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #f0f7ff; border-radius: 8px; padding: 20px; text-align: center;">
-                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #0078ff; margin: 10px 0;" id="total-documents">0</div>
-                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Total Documents</div>
-                                </div>
-                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #f0fff7; border-radius: 8px; padding: 20px; text-align: center;">
-                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #00c853; margin: 10px 0;" id="analyzed-documents">0</div>
-                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Analyzed Documents</div>
-                                </div>
-                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #fff8f0; border-radius: 8px; padding: 20px; text-align: center;">
-                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #ff9800; margin: 10px 0;" id="pending-documents">0</div>
-                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Pending Analysis</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="analytics-types" style="margin-bottom: 30px;">
-                            <h3>Document Types</h3>
-                            <div class="document-types" style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px;">
-                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
-                                    <div style="background-color: #e3f2fd; padding: 10px; border-radius: 50%; margin-right: 15px;">
-                                        <svg fill="#0078ff" width="24" height="24" viewBox="0 0 24 24">
-                                            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"></path>
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <div style="font-weight: 500;">PDF Documents</div>
-                                        <div style="font-size: 1.5rem; font-weight: bold; color: #0078ff;" id="pdf-count">0</div>
-                                    </div>
-                                </div>
-                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
-                                    <div style="background-color: #e8f5e9; padding: 10px; border-radius: 50%; margin-right: 15px;">
-                                        <svg fill="#00c853" width="24" height="24" viewBox="0 0 24 24">
-                                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8 4h1v5H8V4zm3 0h1v5h-1V4zm3 0h1v5h-1V4zm-6 6h8v1H8v-1zm0 2h8v1H8v-1zm0 2h8v1H8v-1z"></path>
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <div style="font-weight: 500;">Word Documents</div>
-                                        <div style="font-size: 1.5rem; font-weight: bold; color: #00c853;" id="word-count">0</div>
-                                    </div>
-                                </div>
-                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
-                                    <div style="background-color: #fff3e0; padding: 10px; border-radius: 50%; margin-right: 15px;">
-                                        <svg fill="#ff9800" width="24" height="24" viewBox="0 0 24 24">
-                                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"></path>
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <div style="font-weight: 500;">Other Files</div>
-                                        <div style="font-size: 1.5rem; font-weight: bold; color: #ff9800;" id="other-count">0</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="analytics-activity" style="margin-bottom: 30px;">
-                            <h3>Recent Activity</h3>
-                            <div class="recent-activity" style="margin-top: 20px; background-color: #f9f9f9; border-radius: 8px; padding: 20px;" id="recent-activity">
-                                <div class="loading-spinner">Loading analytics data...</div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    // Add analytics view to the main dashboard
-                    mainDashboardContainer.appendChild(analyticsView);
-                    
-                    // Add event listener for refresh analytics button
-                    const refreshAnalyticsButton = analyticsView.querySelector('#refresh-analytics');
-                    if (refreshAnalyticsButton) {
-                        refreshAnalyticsButton.addEventListener('click', function() {
-                            loadAnalyticsData();
-                        });
-                    }
-                } else {
-                    // If it exists, make it visible
-                    analyticsView.style.display = 'block';
-                }
-                
-                // Load analytics data
-                loadAnalyticsData();
-            }
-            
-            // Function to load analytics data
-            function loadAnalyticsData() {
-                console.log('Loading analytics data...');
-                
-                // Set loading state for activity section
-                const recentActivity = document.getElementById('recent-activity');
-                if (recentActivity) {
-                    recentActivity.innerHTML = '<div class="loading-spinner">Loading analytics data...</div>';
-                }
-                
-                // Add timeout for fetch operation
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-                
-                // Fetch documents from the API
-                fetch('/api/files', {
-                    signal: controller.signal
-                })
+                // Fetch the analysis from the server API endpoint, let the server handle the logic
+                fetch(`/api/analysis?id=${analysisId}`)
                     .then(response => {
-                        clearTimeout(timeoutId);
                         if (!response.ok) {
-                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                            return response.json().catch(() => {
+                                throw new Error(`Analysis not found for this file`);
+                            }).then(errorData => {
+                                throw new Error(errorData.message || `Analysis not found for this file`);
+                            });
                         }
                         return response.json();
                     })
-                    .then(data => {
-                        console.log('Analytics data retrieved:', data);
-                        if (data && data.files) {
-                            // Update analytics visualization
-                            updateAnalyticsVisualization(data.files);
-                        } else {
-                            console.warn('API response missing files array:', data);
-                            updateAnalyticsVisualization([]);
+                    .then(response => {
+                        // Check if the response is valid
+                        if (!response.success) {
+                            throw new Error(response.message || 'Failed to load analysis');
                         }
+                        
+                        try {
+                            // Log the full response structure for debugging
+                            console.log('Analysis retrieved:', response);
+                            
+                            // Get the data object from the response
+                            const data = response.data;
+                            
+                            // Get the actual analysis object - it can be nested in an 'analysis' property
+                            // or can be directly in specific properties like 'summary', 'insights', etc.
+                            // If analysis property exists, use that, otherwise use the data object itself
+                            const analysisData = data.analysis || data;
+                            
+                            // DISPLAY SUMMARY
+                            if (analysisData.summary) {
+                                documentSummary.innerHTML = analysisData.summary;
+                            } else if (data.summary) {
+                                documentSummary.innerHTML = data.summary;
+                            } else {
+                                documentSummary.innerHTML = 'No summary available';
+                            }
+                            
+                            // DISPLAY INSIGHTS
+                            // Check multiple possible property names for insights
+                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
+                            
+                            if (insights && insights.length > 0) {
+                                const insightsList = document.createElement('ul');
+                                insightsList.className = 'insight-list';
+                                
+                                insights.forEach(insight => {
+                                    const insightItem = document.createElement('li');
+                                    insightItem.className = 'insight-item';
+                                    insightItem.textContent = insight;
+                                    insightsList.appendChild(insightItem);
+                                });
+                                
+                                insightsContainer.innerHTML = '';
+                                insightsContainer.appendChild(insightsList);
+                            } else {
+                                insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
+                            }
+                            
+                            // DISPLAY METRICS
+                            const metrics = analysisData.metrics || data.metrics || {};
+                            
+                            if (metrics && Object.keys(metrics).length > 0) {
+                                metricsContainer.innerHTML = '';
+                                
+                                for (const [key, value] of Object.entries(metrics)) {
+                                    const metricCard = document.createElement('div');
+                                    metricCard.className = 'metric-card';
+                                    
+                                    let displayValue = value;
+                                    if (Array.isArray(value)) {
+                                        displayValue = value.join(', ');
+                                    } else if (typeof value === 'object') {
+                                        displayValue = JSON.stringify(value);
+                                    }
+                                    
+                                    metricCard.innerHTML = `
+                                        <div class="metric-value">${displayValue}</div>
+                                        <div class="metric-label">${key}</div>
+                                    `;
+                                    
+                                    metricsContainer.appendChild(metricCard);
+                                }
+                            } else {
+                                metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                            }
+                            
+                            // DISPLAY RECOMMENDATIONS
+                            const recommendations = analysisData.recommendations || data.recommendations || [];
+                            
+                            if (recommendations && recommendations.length > 0) {
+                                recommendationsList.innerHTML = '';
+                                
+                                recommendations.forEach(recommendation => {
+                                    const recommendationItem = document.createElement('li');
+                                    recommendationItem.textContent = recommendation;
+                                    recommendationsList.appendChild(recommendationItem);
+                                });
+                            } else {
+                                recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                            }
+                            
+                            // FALLBACK: Display raw data if no structured content was found
+                            const hasContent = analysisData.summary || 
+                                              (insights && insights.length > 0) || 
+                                              (Object.keys(metrics).length > 0) || 
+                                              (recommendations && recommendations.length > 0);
+                            
+                            if (!hasContent) {
+                                console.warn('No structured analysis data found, displaying raw data');
+                                documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
+                                    '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
+                                    JSON.stringify(data, null, 2) + 
+                                    '</pre>';
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing analysis data:', parseError);
+                            documentSummary.innerHTML = `<div class="error-message">Error parsing analysis data: ${parseError.message}</div>`;
+                            insightsContainer.innerHTML = '';
+                            metricsContainer.innerHTML = '';
+                            recommendationsList.innerHTML = '';
+                        }
+                        
+                        // Scroll to analysis results
+                        analysisResults.scrollIntoView({ behavior: 'smooth' });
                     })
                     .catch(error => {
-                        clearTimeout(timeoutId);
-                        console.error('Error loading analytics data:', error);
-                        const recentActivity = document.getElementById('recent-activity');
-                        if (recentActivity) {
-                            recentActivity.innerHTML = '<div class="empty-message">Error loading analytics data. Please try again.</div>';
-                        }
-                    });
-            }
-            
-            // Function to update analytics visualization
-            function updateAnalyticsVisualization(documents) {
-                // Count totals
-                const totalDocuments = documents.length;
-                const analyzedDocuments = documents.filter(doc => doc.hasAnalysis).length;
-                const pendingDocuments = totalDocuments - analyzedDocuments;
-                
-                // Update document counts
-                document.getElementById('total-documents').textContent = totalDocuments;
-                document.getElementById('analyzed-documents').textContent = analyzedDocuments;
-                document.getElementById('pending-documents').textContent = pendingDocuments;
-                
-                // Count document types
-                let pdfCount = 0;
-                let wordCount = 0;
-                let otherCount = 0;
-                
-                documents.forEach(doc => {
-                    if (doc.name) {
-                        const extension = doc.name.split('.').pop().toLowerCase();
-                        if (extension === 'pdf') {
-                            pdfCount++;
-                        } else if (['doc', 'docx'].includes(extension)) {
-                            wordCount++;
-                        } else {
-                            otherCount++;
-                        }
-                    } else {
-                        otherCount++;
-                    }
-                });
-                
-                // Update document type counts
-                document.getElementById('pdf-count').textContent = pdfCount;
-                document.getElementById('word-count').textContent = wordCount;
-                document.getElementById('other-count').textContent = otherCount;
-                
-                // Update recent activity
-                const recentActivity = document.getElementById('recent-activity');
-                if (recentActivity) {
-                    if (documents.length === 0) {
-                        recentActivity.innerHTML = '<div class="empty-message">No documents found. Upload documents to view analytics.</div>';
-                        return;
-                    }
-                    
-                    // Sort documents by upload date (newest first)
-                    const sortedDocuments = [...documents].sort((a, b) => {
-                        const dateA = a.lastModified ? new Date(a.lastModified) : new Date(0);
-                        const dateB = b.lastModified ? new Date(b.lastModified) : new Date(0);
-                        return dateB - dateA;
-                    });
-                    
-                    // Take the 5 most recent documents
-                    const recentDocuments = sortedDocuments.slice(0, 5);
-                    
-                    // Create activity list
-                    const activityList = document.createElement('ul');
-                    activityList.style.listStyle = 'none';
-                    activityList.style.padding = '0';
-                    
-                    recentDocuments.forEach(doc => {
-                        const date = doc.lastModified ? new Date(doc.lastModified) : new Date();
-                        const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                        console.error('Error loading analysis:', error);
                         
-                        const listItem = document.createElement('li');
-                        listItem.style.padding = '10px 0';
-                        listItem.style.borderBottom = '1px solid #eee';
-                        listItem.style.display = 'flex';
-                        listItem.style.alignItems = 'center';
-                        listItem.style.justifyContent = 'space-between';
-                        
-                        // Determine icon based on file type
-                        let iconColor = '#0078ff';
-                        if (doc.name) {
-                            const extension = doc.name.split('.').pop().toLowerCase();
-                            if (extension === 'pdf') {
-                                iconColor = '#0078ff';
-                            } else if (['doc', 'docx'].includes(extension)) {
-                                iconColor = '#00c853';
-                            } else {
-                                iconColor = '#ff9800';
-                            }
-                        }
-                        
-                        listItem.innerHTML = `
-                            <div style="display: flex; align-items: center;">
-                                <div style="background-color: ${iconColor}1a; padding: 8px; border-radius: 50%; margin-right: 15px;">
-                                    <i class="fas fa-file" style="color: ${iconColor};"></i>
-                                </div>
-                                <div>
-                                    <div style="font-weight: 500;">${doc.name || 'Unnamed document'}</div>
-                                    <div style="font-size: 0.8rem; color: #666;">Uploaded ${formattedDate}</div>
-                                </div>
-                            </div>
-                            <div>
-                                ${doc.hasAnalysis ? 
-                                    '<span style="background-color: #e8f5e9; color: #00c853; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">Analyzed</span>' : 
-                                    '<span style="background-color: #fff8e1; color: #ff9800; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">Pending</span>'}
+                        // Display a more helpful error message with suggestions
+                        documentSummary.innerHTML = `
+                            <div class="error-message">
+                                <h3>Error loading analysis: ${error.message}</h3>
+                                <p>This could be because:</p>
+                                <ul>
+                                    <li>The document has not been analyzed yet</li>
+                                    <li>The analysis file may have a different name format than expected</li>
+                                    <li>The analysis file may have been removed or corrupted</li>
+                                </ul>
+                                <p>You can try uploading the document again to generate a new analysis.</p>
                             </div>
                         `;
                         
-                        activityList.appendChild(listItem);
+                        // Scroll to analysis results
+                        analysisResults.scrollIntoView({ behavior: 'smooth' });
                     });
-                    
-                    recentActivity.innerHTML = '';
-                    recentActivity.appendChild(activityList);
-                }
             }
             
             // Function to display only the 5 latest documents on the dashboard
