@@ -3,83 +3,86 @@ FROM node:18-alpine
 # Create a different app directory to avoid Coolify's volume mount on /app
 WORKDIR /srv/app
 
-# Create a minimal package.json
-RUN echo '{"name":"reportanalyser-minimal","version":"1.0.0","main":"server.js","scripts":{"start":"node server.js"},"dependencies":{}}' > package.json
+# Create a package.json with Express dependency
+RUN echo '{"name":"reportanalyser","version":"1.0.0","main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"express":"^4.18.2"}}' > package.json
 
-# Create the server.js file directly using RUN commands
-RUN echo 'const http = require("http");' > server.js && \
+# Install dependencies
+RUN npm install
+
+# Copy the public directory first to make sure it's available
+COPY public /srv/app/public
+
+# Create the server.js file that will serve the public folder
+RUN echo 'const express = require("express");' > server.js && \
+    echo 'const path = require("path");' >> server.js && \
+    echo 'const fs = require("fs");' >> server.js && \
+    echo 'const app = express();' >> server.js && \
     echo 'const port = process.env.PORT || 9000;' >> server.js && \
     echo '' >> server.js && \
-    echo '// Create a simple HTTP server' >> server.js && \
-    echo 'const server = http.createServer((req, res) => {' >> server.js && \
-    echo '  // Log the request' >> server.js && \
+    echo '// Log requests middleware' >> server.js && \
+    echo 'app.use((req, res, next) => {' >> server.js && \
     echo '  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);' >> server.js && \
+    echo '  next();' >> server.js && \
+    echo '});' >> server.js && \
     echo '' >> server.js && \
-    echo '  // Health check endpoint' >> server.js && \
-    echo '  if (req.url === "/api/health") {' >> server.js && \
-    echo '    res.writeHead(200, { "Content-Type": "application/json" });' >> server.js && \
-    echo '    res.end(JSON.stringify({' >> server.js && \
-    echo '      status: "ok",' >> server.js && \
-    echo '      time: new Date().toISOString(),' >> server.js && \
-    echo '      node: process.version,' >> server.js && \
-    echo '      directory: __dirname' >> server.js && \
-    echo '    }));' >> server.js && \
-    echo '    return;' >> server.js && \
-    echo '  }' >> server.js && \
+    echo '// Check if public directory exists' >> server.js && \
+    echo 'if (fs.existsSync(path.join(__dirname, "public"))) {' >> server.js && \
+    echo '  console.log("Public directory found, serving static files");' >> server.js && \
+    echo '  app.use(express.static(path.join(__dirname, "public")));' >> server.js && \
+    echo '} else {' >> server.js && \
+    echo '  console.log("Public directory not found, will serve fallback content");' >> server.js && \
+    echo '}' >> server.js && \
     echo '' >> server.js && \
-    echo '  // Root endpoint with HTML' >> server.js && \
-    echo '  if (req.url === "/") {' >> server.js && \
-    echo '    res.writeHead(200, { "Content-Type": "text/html" });' >> server.js && \
-    echo '    res.end(`' >> server.js && \
+    echo '// API health endpoint' >> server.js && \
+    echo 'app.get("/api/health", (req, res) => {' >> server.js && \
+    echo '  res.json({' >> server.js && \
+    echo '    status: "ok",' >> server.js && \
+    echo '    time: new Date().toISOString(),' >> server.js && \
+    echo '    publicDir: fs.existsSync(path.join(__dirname, "public")),' >> server.js && \
+    echo '    directory: __dirname,' >> server.js && \
+    echo '    files: fs.existsSync(path.join(__dirname, "public")) ? fs.readdirSync(path.join(__dirname, "public")) : []' >> server.js && \
+    echo '  });' >> server.js && \
+    echo '});' >> server.js && \
+    echo '' >> server.js && \
+    echo '// Fallback route if index.html doesn\'t exist' >> server.js && \
+    echo 'app.get("/", (req, res) => {' >> server.js && \
+    echo '  const indexPath = path.join(__dirname, "public", "index.html");' >> server.js && \
+    echo '  if (fs.existsSync(indexPath)) {' >> server.js && \
+    echo '    res.sendFile(indexPath);' >> server.js && \
+    echo '  } else {' >> server.js && \
+    echo '    res.send(`' >> server.js && \
     echo '      <!DOCTYPE html>' >> server.js && \
-    echo '      <html>' >> server.js && \
-    echo '      <head>' >> server.js && \
-    echo '        <title>AI Report Analyzer</title>' >> server.js && \
-    echo '        <style>' >> server.js && \
-    echo '          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }' >> server.js && \
-    echo '          .container { background-color: #f5f5f5; border: 1px solid #ddd; padding: 20px; border-radius: 5px; }' >> server.js && \
-    echo '          h1 { color: #0066cc; }' >> server.js && \
-    echo '          .card { background: white; border-radius: 5px; padding: 15px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }' >> server.js && \
-    echo '        </style>' >> server.js && \
-    echo '      </head>' >> server.js && \
-    echo '      <body>' >> server.js && \
-    echo '        <div class="container">' >> server.js && \
-    echo '          <h1>AI Report Analyzer</h1>' >> server.js && \
-    echo '          <p>Success! Server is running from ${__dirname}</p>' >> server.js && \
-    echo '' >> server.js && \
-    echo '          <div class="card">' >> server.js && \
-    echo '            <h2>Server Information</h2>' >> server.js && \
-    echo '            <ul>' >> server.js && \
-    echo '              <li>Node.js version: ${process.version}</li>' >> server.js && \
-    echo '              <li>Environment: ${process.env.NODE_ENV || "development"}</li>' >> server.js && \
-    echo '              <li>Port: ${port}</li>' >> server.js && \
-    echo '              <li>Time: ${new Date().toISOString()}</li>' >> server.js && \
-    echo '              <li>Directory: ${__dirname}</li>' >> server.js && \
-    echo '            </ul>' >> server.js && \
-    echo '          </div>' >> server.js && \
-    echo '' >> server.js && \
-    echo '          <p><a href="/api/health">View Health Status</a></p>' >> server.js && \
-    echo '        </div>' >> server.js && \
-    echo '      </body>' >> server.js && \
-    echo '      </html>' >> server.js && \
+    echo '      <html><head><title>Report Analyzer</title></head>' >> server.js && \
+    echo '      <body><h1>Report Analyzer</h1><p>Serving from ${__dirname}</p>' >> server.js && \
+    echo '      <p>Cannot find public/index.html</p></body></html>' >> server.js && \
     echo '    `);' >> server.js && \
-    echo '    return;' >> server.js && \
     echo '  }' >> server.js && \
+    echo '});' >> server.js && \
     echo '' >> server.js && \
-    echo '  // Handle all other requests with a redirect' >> server.js && \
-    echo '  res.writeHead(302, { "Location": "/" });' >> server.js && \
-    echo '  res.end();' >> server.js && \
+    echo '// Catch all route - send to index.html for client-side routing' >> server.js && \
+    echo 'app.get("*", (req, res) => {' >> server.js && \
+    echo '  const indexPath = path.join(__dirname, "public", "index.html");' >> server.js && \
+    echo '  if (fs.existsSync(indexPath)) {' >> server.js && \
+    echo '    res.sendFile(indexPath);' >> server.js && \
+    echo '  } else {' >> server.js && \
+    echo '    res.redirect("/");' >> server.js && \
+    echo '  }' >> server.js && \
     echo '});' >> server.js && \
     echo '' >> server.js && \
     echo '// Start the server' >> server.js && \
-    echo 'server.listen(port, "0.0.0.0", () => {' >> server.js && \
+    echo 'app.listen(port, "0.0.0.0", () => {' >> server.js && \
     echo '  console.log(`Server running on port ${port}`);' >> server.js && \
-    echo '  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);' >> server.js && \
-    echo '  console.log(`Directory: ${__dirname}`);' >> server.js && \
+    echo '  console.log(`Current directory: ${__dirname}`);' >> server.js && \
+    echo '  console.log(`Public directory exists: ${fs.existsSync(path.join(__dirname, "public"))}`);' >> server.js && \
+    echo '  if (fs.existsSync(path.join(__dirname, "public"))) {' >> server.js && \
+    echo '    console.log(`Files in public: ${fs.readdirSync(path.join(__dirname, "public")).join(", ")}`);' >> server.js && \
+    echo '  }' >> server.js && \
     echo '});'
 
-# Verify the server.js file was created during build
+# Verify the server.js file and public directory were created during build
 RUN echo "--- Build Step: Contents of /srv/app ---" && ls -la /srv/app
+RUN echo "--- Build Step: Contents of /srv/app/public (if exists) ---" && \
+    if [ -d "/srv/app/public" ]; then ls -la /srv/app/public; else echo "public directory doesn't exist"; fi
 
 # Set environment variables
 ENV PORT=9000
