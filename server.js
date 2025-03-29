@@ -1191,11 +1191,14 @@ async function listFilesFromMinIO() {
       
       // Set a limit on the number of files to retrieve to prevent overload
       let fileCount = 0;
-      const FILE_LIMIT = 20; // Limit to latest 20 files for performance
+      const FILE_LIMIT = 100; // Increased from 20 to 100 for testing
       
+      console.log(`[MINIO] Starting listObjects stream from MinIO...`);
       const objectsStream = minioClient.listObjects(minioBucket, '', true);
       
       objectsStream.on('data', (obj) => {
+        console.log(`[MINIO] Object found: ${obj.name}, size: ${obj.size}, lastModified: ${obj.lastModified}`);
+        
         // Create a URL for the file
         const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + obj.name;
         
@@ -1207,6 +1210,7 @@ async function listFilesFromMinIO() {
             url: fileUrl,
             lastModified: obj.lastModified
           });
+          console.log(`[MINIO] Analysis object found: ${obj.name}`);
           return; // Skip adding analysis objects to the files list
         }
         
@@ -1225,6 +1229,8 @@ async function listFilesFromMinIO() {
           analysisUrl: null    // Will update this later if analysis exists
         });
         
+        console.log(`[MINIO] Added regular object to files list: ${obj.name}`);
+        
         // Add a file count limit
         fileCount++;
         if (fileCount > FILE_LIMIT && !obj.name.startsWith('analysis-')) {
@@ -1236,11 +1242,19 @@ async function listFilesFromMinIO() {
       
       objectsStream.on('error', (err) => {
         console.error(`[MINIO] Error listing files: ${err.message}`);
+        console.error(`[MINIO] Error details: ${err.stack}`);
         reject(err);
       });
       
       objectsStream.on('end', async () => {
         console.log(`[MINIO] Found ${filesList.length} files and ${analysisMap.size} analysis objects in bucket '${minioBucket}'`);
+        
+        // Detailed logging of file list
+        if (filesList.length > 0) {
+          console.log(`[MINIO] First file in list: ${JSON.stringify(filesList[0])}`);
+        } else {
+          console.log(`[MINIO] File list is empty`);
+        }
         
         // Associate analysis objects with their files
         for (let file of filesList) {
@@ -1251,6 +1265,7 @@ async function listFilesFromMinIO() {
             file.hasAnalysis = true;
             file.analysisUrl = analysisObj.url;
             file.analysisId = analysisObj.analysisId;
+            console.log(`[MINIO] Associated analysis ${expectedAnalysisId} with file ${file.objectName}`);
           }
         }
         
@@ -1324,11 +1339,21 @@ async function handleListFiles(req, res) {
         'X-Response-Time': `${Date.now() - start}ms`
       });
       
-      res.end(JSON.stringify({
+      // Create a more detailed response for debugging
+      const responseData = {
         success: true,
         message: 'Files retrieved successfully',
+        timestamp: new Date().toISOString(),
+        minio_status: minioAvailable ? 'available' : 'unavailable',
+        response_time_ms: Date.now() - start,
+        files_count: filesList.length,
         files: filesList
-      }));
+      };
+      
+      // Print the full response for debugging
+      console.log(`[API] Response summary: success=${responseData.success}, files_count=${responseData.files_count}, minio_status=${responseData.minio_status}`);
+      
+      res.end(JSON.stringify(responseData));
     }
     
   } catch (err) {

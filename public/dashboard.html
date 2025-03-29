@@ -1102,19 +1102,28 @@
                     })
                     .then(data => {
                         console.log('All documents retrieved:', data);
-                        if (data && data.files) {
+                        
+                        // Extra debugging
+                        console.log('API response structure:', Object.keys(data));
+                        console.log('Success flag:', data.success);
+                        console.log('Message:', data.message);
+                        console.log('Files array exists:', !!data.files);
+                        console.log('Files array length:', data.files ? data.files.length : 0);
+                        
+                        if (data && data.files && Array.isArray(data.files)) {
                             allDocuments = data.files || [];
+                            console.log('Sample first document:', allDocuments.length > 0 ? allDocuments[0] : 'No documents');
                             // Show all documents without limit
                             displayAllDocumentsList(allDocuments);
                         } else {
-                            console.warn('API response missing files array:', data);
-                            displayAllDocumentsList([]);
+                            console.warn('API response missing files array or invalid format:', data);
+                            documentsContainer.innerHTML = '<div class="empty-message">No documents found or invalid response format. Check browser console for details.</div>';
                         }
                     })
                     .catch(error => {
                         clearTimeout(timeoutId);
                         console.error('Error loading documents:', error);
-                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                        documentsContainer.innerHTML = `<div class="empty-message">Error loading documents: ${error.message}. Please try again.</div>`;
                     });
             }
             
@@ -1140,18 +1149,27 @@
                     })
                     .then(data => {
                         console.log('Recent documents retrieved:', data);
-                        if (data && data.files) {
+                        
+                        // Extra debugging
+                        console.log('API response structure:', Object.keys(data));
+                        console.log('Success flag:', data.success);
+                        console.log('Message:', data.message);
+                        console.log('Files array exists:', !!data.files);
+                        console.log('Files array length:', data.files ? data.files.length : 0);
+                        
+                        if (data && data.files && Array.isArray(data.files)) {
                             allDocuments = data.files || [];
+                            console.log('Sample first document:', allDocuments.length > 0 ? allDocuments[0] : 'No documents');
                             displayDocumentsList(allDocuments);
                         } else {
-                            console.warn('API response missing files array:', data);
-                            displayDocumentsList([]);
+                            console.warn('API response missing files array or invalid format:', data);
+                            documentsContainer.innerHTML = '<div class="empty-message">No documents found or invalid response format. Check browser console for details.</div>';
                         }
                     })
                     .catch(error => {
                         clearTimeout(timeoutId);
                         console.error('Error loading documents:', error);
-                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                        documentsContainer.innerHTML = `<div class="empty-message">Error loading documents: ${error.message}. Please try again.</div>`;
                     });
             }
             
@@ -1553,14 +1571,37 @@
             // Function to display only the 5 latest documents on the dashboard
             function displayDocumentsList(documents) {
                 console.log('Displaying recent documents list:', documents);
+                console.log('Documents array type:', Object.prototype.toString.call(documents));
+                console.log('Documents count:', documents.length);
+                
+                if (!documents || !Array.isArray(documents)) {
+                    console.error('Invalid documents array:', documents);
+                    documentsContainer.innerHTML = '<div class="empty-message">Error: Invalid document data format. Check browser console.</div>';
+                    return;
+                }
                 
                 if (documents.length === 0) {
                     documentsContainer.innerHTML = '<div class="empty-message">No documents found. Upload a document to get started.</div>';
                     return;
                 }
                 
+                // Display debugging info at the top
+                documentsContainer.innerHTML = `
+                    <div style="background-color: #f7f7f7; padding: 10px; margin-bottom: 15px; border-radius: 5px; font-family: monospace; font-size: 12px;">
+                        <div>Debug: Found ${documents.length} document(s)</div>
+                        <div>First document: ${documents[0] ? documents[0].name : 'unknown'}</div>
+                        <div>Object name: ${documents[0] ? documents[0].objectName : 'unknown'}</div>
+                    </div>
+                `;
+                
                 // Store the total count of documents
                 const totalCount = documents.length;
+                
+                // Ensure we can sort by testing a document first
+                if (documents.length > 0) {
+                    console.log('Sample document for sorting:', documents[0]);
+                    console.log('Sample lastModified:', documents[0].lastModified);
+                }
                 
                 // Sort documents by upload date (newest first)
                 const sortedDocuments = [...documents].sort((a, b) => {
