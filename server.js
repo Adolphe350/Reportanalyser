@@ -4,7 +4,12 @@ const fs = require("fs");
 const path = require("path");
 
 // Add dotenv to load environment variables from .env file
-require('dotenv').config();
+try {
+  require('dotenv').config();
+  console.log(`[STARTUP] Loaded dotenv: ${process.env.DOTENV_LOADED ? 'OK' : 'Not found'}`);
+} catch (err) {
+  console.error(`[STARTUP] Error loading dotenv: ${err.message}`);
+}
 
 const port = process.env.PORT || 9000;
 
@@ -18,11 +23,20 @@ let geminiModel = null;
 try {
   const { GoogleGenerativeAI } = require("@google/generative-ai");
   
-  // Get API key from environment variable - IMPORTANT: Set this in your environment or configure with Coolify
-  const apiKey = process.env.GEMINI_API_KEY;
+  // Get API key from environment variable or fallback to direct value
+  let apiKey = process.env.GEMINI_API_KEY;
+  
+  // Display some debug info
+  console.log(`[STARTUP] process.env.GEMINI_API_KEY exists: ${!!process.env.GEMINI_API_KEY}`);
+  
+  // If no API key from environment, use direct value as fallback
+  if (!apiKey) {
+    console.log(`[STARTUP] API key not found in environment, using hardcoded fallback`);
+    apiKey = "AIzaSyCxwvTfvJkjbNbnxTepyQJrD0hqDXW6f0c";
+  }
   
   if (apiKey) {
-    console.log(`[STARTUP] Gemini API key found, initializing AI`);
+    console.log(`[STARTUP] Gemini API key found (${apiKey.substring(0, 5)}...), initializing AI`);
     genAI = new GoogleGenerativeAI(apiKey);
     geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" });
     geminiAvailable = true;
@@ -135,12 +149,16 @@ try {
 async function analyzeDocumentWithGemini(text, fileName) {
   console.log(`[AI] Starting document analysis with Gemini for ${fileName}`);
   
+  // Check if Gemini is available
   if (!geminiAvailable || !geminiModel) {
     console.log(`[AI] Gemini is not available, using simulation mode`);
+    console.log(`[AI] geminiAvailable: ${geminiAvailable}, geminiModel: ${geminiModel ? 'defined' : 'undefined'}`);
     return getSimulatedAnalysisResults(fileName);
   }
   
   try {
+    console.log(`[AI] Preparing to analyze document text (${text.length} chars)`);
+    
     // Create a prompt for the Gemini AI model
     const prompt = `
 You are an expert document and report analyzer. I need you to thoroughly analyze the following document text and extract meaningful insights.
@@ -170,13 +188,27 @@ ${text.length > 10000 ? '... (text truncated for size)' : ''}
 Analyze this document and return only the JSON, nothing else. The analysis should be specific to this document, not generic.
 `;
 
+    console.log(`[AI] Creating Gemini request with prompt length: ${prompt.length}`);
     console.log(`[AI] Sending request to Gemini AI`);
-    const result = await geminiModel.generateContent(prompt);
+    
+    // Make the API call with timeout handling
+    const startTime = Date.now();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Gemini API request timed out after 20 seconds')), 20000)
+    );
+    
+    // Create the Gemini request
+    const geminiPromise = geminiModel.generateContent(prompt);
+    
+    // Wait for either the API response or timeout
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
     const response = await result.response;
     const responseText = response.text();
     
-    console.log(`[AI] Received response from Gemini`);
-    console.log(`[AI] Response text (first 100 chars): ${responseText.substring(0, 100)}...`);
+    const endTime = Date.now();
+    console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
+    console.log(`[AI] Response text length: ${responseText.length} chars`);
+    console.log(`[AI] Response text (first 200 chars): ${responseText.substring(0, 200).replace(/\n/g, ' ')}...`);
     
     // Parse the response to extract the JSON
     try {
@@ -184,19 +216,26 @@ Analyze this document and return only the JSON, nothing else. The analysis shoul
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const jsonStr = jsonMatch[0];
+        console.log(`[AI] Extracted JSON from response (${jsonStr.length} chars)`);
+        
         const analysis = JSON.parse(jsonStr);
-        console.log(`[AI] Successfully parsed analysis results`);
+        console.log(`[AI] Successfully parsed JSON into analysis object`);
+        console.log(`[AI] Analysis contains ${analysis.keyInsights ? analysis.keyInsights.length : 0} insights and ${analysis.recommendations ? analysis.recommendations.length : 0} recommendations`);
+        
         return analysis;
       } else {
         console.error(`[AI] Could not find JSON in response`);
+        console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
         return getSimulatedAnalysisResults(fileName);
       }
     } catch (parseError) {
       console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
+      console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
       return getSimulatedAnalysisResults(fileName);
     }
   } catch (err) {
     console.error(`[AI] Error in Gemini analysis: ${err.message}`);
+    console.error(`[AI] Error stack: ${err.stack}`);
     return getSimulatedAnalysisResults(fileName);
   }
 }
@@ -261,12 +300,55 @@ function getSimulatedAnalysisResults(fileName) {
 function extractTextFromFile(buffer, fileType, fileName) {
   console.log(`[EXTRACT] Extracting text from ${fileName} (${fileType})`);
   
+  // If it's a text file, return the actual content
   if (fileType === 'text/plain') {
+    console.log(`[EXTRACT] Text file detected, returning actual content`);
     return buffer.toString('utf8');
   } 
   
-  // For now we'll simulate the extracted text, but in a production environment
-  // you would use libraries like pdfjs-dist for PDFs and mammoth for DOCX files
+  // Check if it's a PDF by looking for the PDF signature
+  const isPDF = buffer.slice(0, 5).toString().includes('%PDF');
+  if (isPDF) {
+    console.log(`[EXTRACT] PDF file detected by signature check`);
+    
+    // Look for text content in the PDF (simplified)
+    const bufferStr = buffer.toString('utf8', 0, Math.min(buffer.length, 10000));
+    
+    // Extract some real text snippets if found
+    const textSnippets = [];
+    let textContentFound = false;
+    
+    // Look for text objects in PDF
+    const textMatches = bufferStr.match(/\(([^)]+)\)/g);
+    if (textMatches && textMatches.length > 10) {
+      textContentFound = true;
+      textMatches.slice(0, 50).forEach(match => {
+        // Clean up the text and add to snippets if it looks like actual text
+        const text = match.substring(1, match.length - 1)
+          .replace(/\\n/g, '\n')
+          .replace(/\\r/g, '')
+          .replace(/\\\(/g, '(')
+          .replace(/\\\)/g, ')');
+          
+        if (text.length > 5 && /[a-zA-Z]{3,}/.test(text)) {
+          textSnippets.push(text);
+        }
+      });
+      
+      console.log(`[EXTRACT] Found ${textSnippets.length} text snippets in PDF`);
+      
+      if (textSnippets.length > 0) {
+        return `Content extracted from ${fileName} (PDF)\n\n${textSnippets.join('\n\n')}`;
+      }
+    }
+    
+    if (!textContentFound) {
+      console.log(`[EXTRACT] Could not extract text content from PDF, using simulated content`);
+    }
+  }
+  
+  // For all other file types or if text extraction failed
+  console.log(`[EXTRACT] Using simulated content for ${fileName}`);
   
   // Get the filename without extension to use in the simulated content
   const fileBaseName = path.basename(fileName, path.extname(fileName));
