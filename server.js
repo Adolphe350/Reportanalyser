@@ -912,6 +912,13 @@ function handleFileUpload(req, res) {
       console.log(`[UPLOAD] Starting AI analysis`);
       const analysisResults = await analyzeDocumentWithGemini(documentText, filename);
       
+      // Save analysis results to MinIO if available
+      let analysisInfo = null;
+      if (minioAvailable && minioFileInfo) {
+        console.log(`[UPLOAD] Saving analysis results to MinIO`);
+        analysisInfo = await saveAnalysisToMinIO(analysisResults, filename, minioFileInfo.objectName);
+      }
+      
       // Respond with success and analysis results
       console.log(`[UPLOAD] File processed successfully in ${Date.now() - start}ms`);
       res.writeHead(200, {
@@ -939,7 +946,9 @@ function handleFileUpload(req, res) {
             path: `uploads/${uniqueFilename}`,
             size: fileBuffer.length
           },
-          location: minioFileInfo ? minioFileInfo.url : `uploads/${uniqueFilename}`
+          location: minioFileInfo ? minioFileInfo.url : `uploads/${uniqueFilename}`,
+          analysisId: analysisInfo ? analysisInfo.analysisId : null,
+          analysisUrl: analysisInfo ? analysisInfo.url : null
         },
         analysis: {
           title: 'Analysis Summary',
@@ -977,6 +986,309 @@ function handleFileUpload(req, res) {
   });
 }
 
+// Function to list files from MinIO
+async function listFilesFromMinIO() {
+  if (!minioAvailable || !minioClient) {
+    console.log(`[MINIO] MinIO not available, cannot list files`);
+    return null;
+  }
+  
+  try {
+    // Ensure the bucket exists
+    console.log(`[MINIO] Checking bucket '${minioBucket}' before listing files...`);
+    const bucketReady = await ensureMinIOBucket();
+    if (!bucketReady) {
+      throw new Error(`Failed to ensure bucket '${minioBucket}' exists`);
+    }
+    
+    console.log(`[MINIO] Listing files from bucket '${minioBucket}'`);
+    
+    // Get a list of all objects in the bucket
+    const objectsStream = minioClient.listObjects(minioBucket, '', true);
+    
+    const filesList = [];
+    const analysisMap = new Map(); // To store analysis objects
+    
+    return new Promise((resolve, reject) => {
+      objectsStream.on('data', (obj) => {
+        // Create a URL for the file
+        const fileUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + obj.name;
+        
+        // Check if this is an analysis object
+        if (obj.name.startsWith('analysis-')) {
+          // Add to analysis map to associate with file later
+          analysisMap.set(obj.name, {
+            analysisId: obj.name,
+            url: fileUrl,
+            lastModified: obj.lastModified
+          });
+          return; // Skip adding analysis objects to the files list
+        }
+        
+        // Extract original filename from the object name (removes timestamp prefix)
+        const originalName = obj.name.substring(obj.name.indexOf('-') + 1);
+        
+        filesList.push({
+          name: originalName,
+          originalName: originalName,
+          size: obj.size,
+          lastModified: obj.lastModified,
+          url: fileUrl,
+          objectName: obj.name,
+          storage: 'minio',
+          hasAnalysis: false,  // Will update this later if analysis exists
+          analysisUrl: null    // Will update this later if analysis exists
+        });
+      });
+      
+      objectsStream.on('error', (err) => {
+        console.error(`[MINIO] Error listing files: ${err.message}`);
+        reject(err);
+      });
+      
+      objectsStream.on('end', async () => {
+        console.log(`[MINIO] Found ${filesList.length} files and ${analysisMap.size} analysis objects in bucket '${minioBucket}'`);
+        
+        // Associate analysis objects with their files
+        for (let file of filesList) {
+          const expectedAnalysisId = `analysis-${file.objectName.substring(file.objectName.indexOf('-') + 1)}`;
+          const analysisObj = analysisMap.get(expectedAnalysisId);
+          
+          if (analysisObj) {
+            file.hasAnalysis = true;
+            file.analysisUrl = analysisObj.url;
+            file.analysisId = analysisObj.analysisId;
+          }
+        }
+        
+        // Sort by lastModified (newest first)
+        filesList.sort((a, b) => b.lastModified - a.lastModified);
+        
+        resolve(filesList);
+      });
+    });
+  } catch (err) {
+    console.error(`[MINIO] Error listing files from MinIO bucket '${minioBucket}': ${err.message}`);
+    console.error(`[MINIO] Error details: ${err.stack}`);
+    return [];
+  }
+}
+
+// Handler for the list files API endpoint
+async function handleListFiles(req, res) {
+  console.log(`[API] Starting list files handler`);
+  const start = Date.now();
+  
+  try {
+    let filesList = [];
+    
+    // Get files from MinIO if available
+    if (minioAvailable) {
+      console.log(`[API] Retrieving files from MinIO`);
+      filesList = await listFilesFromMinIO() || [];
+    } else {
+      console.log(`[API] MinIO not available, only checking local files`);
+      // Could implement local file listing here if needed
+    }
+    
+    console.log(`[API] Files found: ${filesList.length}`);
+    
+    // Return the list of files
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Connection': 'close',
+      'X-Response-Time': `${Date.now() - start}ms`
+    });
+    
+    res.end(JSON.stringify({
+      success: true,
+      message: 'Files retrieved successfully',
+      files: filesList
+    }));
+    
+  } catch (err) {
+    console.error(`[API] Error listing files: ${err.message}`);
+    console.error(err.stack);
+    res.writeHead(500, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: `Error listing files: ${err.message}`
+    }));
+  }
+}
+
+// Function to save analysis results to MinIO
+async function saveAnalysisToMinIO(analysisResults, fileName, fileId) {
+  if (!minioAvailable || !minioClient) {
+    console.log(`[MINIO] MinIO not available, cannot save analysis results`);
+    return null;
+  }
+  
+  try {
+    // Ensure the bucket exists
+    console.log(`[MINIO] Checking bucket '${minioBucket}' before saving analysis...`);
+    const bucketReady = await ensureMinIOBucket();
+    if (!bucketReady) {
+      throw new Error(`Failed to ensure bucket '${minioBucket}' exists`);
+    }
+    
+    // Create a unique analysis ID using the same ID as the file but with a different prefix
+    const analysisId = fileId.replace(/^\d+\-/, 'analysis-');
+    
+    console.log(`[MINIO] Saving analysis results for ${fileName} to bucket '${minioBucket}' as ${analysisId}`);
+    
+    // Convert analysis results to JSON string
+    const analysisJson = JSON.stringify({
+      fileName: fileName,
+      originalFileId: fileId,
+      timestamp: new Date().toISOString(),
+      analysis: analysisResults
+    });
+    
+    const analysisBuffer = Buffer.from(analysisJson);
+    
+    // Upload the analysis JSON to MinIO
+    await minioClient.putObject(minioBucket, analysisId, analysisBuffer, {
+      'Content-Type': 'application/json'
+    });
+    
+    console.log(`[MINIO] Analysis results saved successfully to MinIO bucket '${minioBucket}'`);
+    
+    // Generate URL for the uploaded analysis
+    const analysisUrl = minioClient.protocol + '//' + minioClient.host + ':' + minioClient.port + '/' + minioBucket + '/' + analysisId;
+    
+    return {
+      analysisId: analysisId,
+      url: analysisUrl
+    };
+  } catch (err) {
+    console.error(`[MINIO] Error saving analysis results to MinIO: ${err.message}`);
+    console.error(`[MINIO] Error details: ${err.stack}`);
+    return null;
+  }
+}
+
+// Function to retrieve analysis results from MinIO by file ID
+async function getAnalysisFromMinIO(fileId) {
+  if (!minioAvailable || !minioClient) {
+    console.log(`[MINIO] MinIO not available, cannot retrieve analysis results`);
+    return null;
+  }
+  
+  try {
+    // Convert the file ID to an analysis ID
+    const analysisId = fileId.replace(/^\d+\-/, 'analysis-');
+    
+    console.log(`[MINIO] Retrieving analysis results for object ${fileId} (analysis ID: ${analysisId})`);
+    
+    // Check if the analysis object exists
+    try {
+      await minioClient.statObject(minioBucket, analysisId);
+    } catch (err) {
+      console.log(`[MINIO] Analysis object ${analysisId} not found: ${err.message}`);
+      return null;
+    }
+    
+    // Get the analysis object from MinIO
+    const dataStream = await minioClient.getObject(minioBucket, analysisId);
+    
+    return new Promise((resolve, reject) => {
+      let analysisData = '';
+      
+      dataStream.on('data', chunk => {
+        analysisData += chunk;
+      });
+      
+      dataStream.on('end', () => {
+        console.log(`[MINIO] Successfully retrieved analysis data (${analysisData.length} bytes)`);
+        try {
+          const parsedData = JSON.parse(analysisData);
+          resolve(parsedData);
+        } catch (err) {
+          console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
+          reject(err);
+        }
+      });
+      
+      dataStream.on('error', err => {
+        console.error(`[MINIO] Error reading analysis data stream: ${err.message}`);
+        reject(err);
+      });
+    });
+  } catch (err) {
+    console.error(`[MINIO] Error retrieving analysis from MinIO: ${err.message}`);
+    return null;
+  }
+}
+
+// Add a new API endpoint to get analysis for a specific file
+async function handleGetAnalysis(req, res) {
+  console.log(`[API] Starting get analysis handler`);
+  const start = Date.now();
+  
+  try {
+    // Get the file ID from the query parameters
+    const urlParts = req.url.split('?');
+    if (urlParts.length < 2) {
+      throw new Error('Missing file ID parameter');
+    }
+    
+    const queryParams = new URLSearchParams(urlParts[1]);
+    const fileId = queryParams.get('id');
+    
+    if (!fileId) {
+      throw new Error('Missing file ID parameter');
+    }
+    
+    console.log(`[API] Retrieving analysis for file ID: ${fileId}`);
+    
+    // Get the analysis data from MinIO
+    const analysisData = await getAnalysisFromMinIO(fileId);
+    
+    if (!analysisData) {
+      console.log(`[API] No analysis found for file ID: ${fileId}`);
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Connection': 'close'
+      });
+      
+      res.end(JSON.stringify({
+        success: false,
+        message: 'Analysis not found for this file'
+      }));
+      return;
+    }
+    
+    // Return the analysis data
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Connection': 'close',
+      'X-Response-Time': `${Date.now() - start}ms`
+    });
+    
+    res.end(JSON.stringify({
+      success: true,
+      message: 'Analysis retrieved successfully',
+      data: analysisData
+    }));
+    
+  } catch (err) {
+    console.error(`[API] Error retrieving analysis: ${err.message}`);
+    console.error(err.stack);
+    res.writeHead(500, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: `Error retrieving analysis: ${err.message}`
+    }));
+  }
+}
+
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   const start = Date.now();
@@ -1004,6 +1316,20 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/api/upload') {
       console.log(`[UPLOAD] Received file upload request`);
       handleFileUpload(req, res);
+      return;
+    }
+    
+    // Handle list files request
+    if (req.method === 'GET' && req.url === '/api/files') {
+      console.log(`[API] Received list files request`);
+      handleListFiles(req, res);
+      return;
+    }
+    
+    // Handle get analysis request
+    if (req.method === 'GET' && req.url.startsWith('/api/analysis')) {
+      console.log(`[API] Received get analysis request`);
+      handleGetAnalysis(req, res);
       return;
     }
     

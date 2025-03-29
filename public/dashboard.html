@@ -487,6 +487,132 @@
         .api-status i {
             font-size: 16px;
         }
+
+        /* ADDED: Recent Documents Section */
+        .recent-documents {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .recent-documents h3 {
+            margin-top: 0;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .recent-documents h3 button {
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            color: #333;
+        }
+        
+        .recent-documents h3 button:hover {
+            background-color: #e0e0e0;
+        }
+        
+        .documents-list {
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .document-item {
+            display: flex;
+            align-items: center;
+            background-color: #f9f9f9;
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .document-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .document-icon {
+            background-color: #e0efff;
+            color: #0078ff;
+            width: 36px;
+            height: 36px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-size: 1.2rem;
+        }
+        
+        .document-info {
+            flex: 1;
+        }
+        
+        .document-name {
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+        
+        .document-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .document-link {
+            display: inline-block;
+            margin-left: 10px;
+        }
+        
+        .empty-message {
+            text-align: center;
+            color: #666;
+            padding: 30px 0;
+            font-style: italic;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 20px 0;
+            color: #666;
+        }
+
+        /* Add CSS for the analysis badge and view analysis link */
+        .analysis-badge {
+            background-color: #0078ff;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .view-analysis-link {
+            display: inline-block;
+            margin-left: 15px;
+            color: #0078ff;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .view-analysis-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -591,6 +717,7 @@
             
             <!-- Main dashboard area -->
             <div class="main-dashboard">
+                <!-- Upload Area -->
                 <div class="upload-area">
                     <div class="upload-icon">
                         <svg fill="#0078ff" width="48" height="48" viewBox="0 0 24 24">
@@ -636,73 +763,16 @@
                     </div>
                 </div>
                 
+                <!-- Recent Documents Section (Replacing Recent Reports) -->
                 <div class="recent-reports">
                     <div class="reports-header">
-                        <h2>Recent Reports</h2>
-                        <a href="#" class="btn btn-outline">View All</a>
+                        <h2>Recent Documents</h2>
+                        <button id="refresh-documents" class="btn btn-outline">Refresh</button>
                     </div>
                     
-                    <ul class="report-list">
-                        <li class="report-item">
-                            <div class="report-info">
-                                <div class="report-icon">
-                                    <svg fill="#0078ff" viewBox="0 0 24 24">
-                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div class="report-name">Q2 Financial Report</div>
-                                    <div class="report-date">Uploaded 2 hours ago</div>
-                                </div>
-                            </div>
-                            <span class="report-status">Analyzed</span>
-                        </li>
-                        
-                        <li class="report-item">
-                            <div class="report-info">
-                                <div class="report-icon">
-                                    <svg fill="#0078ff" viewBox="0 0 24 24">
-                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div class="report-name">Market Research 2023</div>
-                                    <div class="report-date">Uploaded yesterday</div>
-                                </div>
-                            </div>
-                            <span class="report-status">Analyzed</span>
-                        </li>
-                        
-                        <li class="report-item">
-                            <div class="report-info">
-                                <div class="report-icon">
-                                    <svg fill="#0078ff" viewBox="0 0 24 24">
-                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div class="report-name">Customer Feedback Analysis</div>
-                                    <div class="report-date">Uploaded 3 days ago</div>
-                                </div>
-                            </div>
-                            <span class="report-status">Analyzed</span>
-                        </li>
-                        
-                        <li class="report-item">
-                            <div class="report-info">
-                                <div class="report-icon">
-                                    <svg fill="#0078ff" viewBox="0 0 24 24">
-                                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div class="report-name">Strategic Planning Document</div>
-                                    <div class="report-date">Uploaded 5 days ago</div>
-                                </div>
-                            </div>
-                            <span class="report-status pending">Processing</span>
-                        </li>
-                    </ul>
+                    <div id="documents-container">
+                        <div class="loading-spinner">Loading documents...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -731,6 +801,113 @@
             const progressFill = document.querySelector('.progress-fill');
             const progressText = document.querySelector('.progress-text');
             const analysisResults = document.querySelector('.analysis-results');
+            const documentsContainer = document.getElementById('documents-container');
+            const refreshDocumentsButton = document.getElementById('refresh-documents');
+            
+            // Load recent documents on page load
+            loadRecentDocuments();
+            
+            // Refresh documents button handler
+            if (refreshDocumentsButton) {
+                refreshDocumentsButton.addEventListener('click', function() {
+                    loadRecentDocuments();
+                });
+            }
+            
+            // Function to load recent documents
+            function loadRecentDocuments() {
+                console.log('Loading recent documents...');
+                documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
+                
+                // Fetch documents from the API
+                fetch('/api/files')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Documents retrieved:', data);
+                        displayDocumentsList(data.files || []);
+                    })
+                    .catch(error => {
+                        console.error('Error loading documents:', error);
+                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                    });
+            }
+            
+            // Function to display the list of documents
+            function displayDocumentsList(documents) {
+                console.log('Displaying documents list:', documents);
+                
+                if (documents.length === 0) {
+                    documentsContainer.innerHTML = '<div class="empty-message">No documents found. Upload a document to get started.</div>';
+                    return;
+                }
+                
+                const documentsList = document.createElement('ul');
+                documentsList.className = 'report-list';
+                
+                documents.forEach(doc => {
+                    // Determine icon based on file type
+                    let iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>';
+                    
+                    if (doc.name) {
+                        const extension = doc.name.split('.').pop().toLowerCase();
+                        if (['pdf'].includes(extension)) {
+                            iconPath = '<path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"></path>';
+                        } else if (['doc', 'docx'].includes(extension)) {
+                            iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8 4h1v5H8V4zm3 0h1v5h-1V4zm3 0h1v5h-1V4zm-6 6h8v1H8v-1zm0 2h8v1H8v-1zm0 2h8v1H8v-1z"></path>';
+                        }
+                    }
+                    
+                    // Format the date
+                    const date = doc.lastModified ? new Date(doc.lastModified) : new Date();
+                    const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    
+                    // Create list item
+                    const documentItem = document.createElement('li');
+                    documentItem.className = 'report-item';
+                    
+                    // Analysis badge if available
+                    const analysisBadge = doc.hasAnalysis 
+                        ? '<span class="report-status">Analyzed</span>'
+                        : '<span class="report-status pending">No Analysis</span>';
+                    
+                    documentItem.innerHTML = `
+                        <div class="report-info">
+                            <div class="report-icon">
+                                <svg fill="#0078ff" viewBox="0 0 24 24">
+                                    ${iconPath}
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="report-name">${doc.name || 'Unnamed document'}</div>
+                                <div class="report-date">Uploaded ${formattedDate}</div>
+                                <div class="report-actions" style="margin-top: 5px;">
+                                    <a href="${doc.url}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
+                                        <i class="fas fa-download"></i> Download
+                                    </a>
+                                    ${doc.hasAnalysis ? `<a href="#" class="view-analysis-link" data-id="${doc.objectName}" title="View analysis" style="color: #0078ff; font-size: 0.85rem;">
+                                        <i class="fas fa-chart-line"></i> View Analysis
+                                    </a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        ${analysisBadge}
+                    `;
+                    
+                    // Add event listener for "View Analysis" link
+                    if (doc.hasAnalysis) {
+                        const viewAnalysisLink = documentItem.querySelector('.view-analysis-link');
+                        viewAnalysisLink.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            loadAnalysisForDocument(doc.objectName);
+                        });
+                    }
+                    
+                    documentsList.appendChild(documentItem);
+                });
+                
+                documentsContainer.innerHTML = '';
+                documentsContainer.appendChild(documentsList);
+            }
             
             // Upload button click handler
             if (uploadButton) {
@@ -846,6 +1023,20 @@
                 document.getElementById('file-name').textContent = file.name;
                 document.getElementById('file-size').textContent = formatFileSize(file.size);
                 
+                // Update storage info if available
+                if (response.file && response.file.storage) {
+                    const storageInfoHtml = `
+                    <div style="margin-top: 5px; font-size: 0.8rem; color: #666;">
+                        Storage: <span>${response.file.storage === 'minio' ? 'MinIO Cloud Storage' : 'Local Storage'}</span>
+                        ${response.file.location ? `<a href="${response.file.location}" target="_blank" style="margin-left: 10px; color: #0078ff; text-decoration: none;">
+                            <i class="fas fa-external-link-alt"></i> View File
+                        </a>` : ''}
+                    </div>`;
+                    
+                    // Append storage info to file-info element
+                    document.querySelector('.file-info').innerHTML += storageInfoHtml;
+                }
+                
                 // Update insights
                 const insightsContainer = document.getElementById('insights-container');
                 insightsContainer.innerHTML = '';
@@ -891,6 +1082,9 @@
                 
                 // Scroll to results
                 analysisResults.scrollIntoView({ behavior: 'smooth' });
+                
+                // Refresh the documents list to include the newly analyzed document
+                loadRecentDocuments();
             }
             
             // Helper function to add a metric card
@@ -929,6 +1123,117 @@
                 const i = Math.floor(Math.log(bytes) / Math.log(k));
                 
                 return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            // Add a function to load and display analysis for a document
+            function loadAnalysisForDocument(fileId) {
+                console.log(`Loading analysis for document ID: ${fileId}`);
+                
+                // Show loading state in the analysis results section
+                analysisResults.style.display = 'block';
+                analysisResults.innerHTML = '<div class="loading-spinner">Loading analysis...</div>';
+                analysisResults.scrollIntoView({ behavior: 'smooth' });
+                
+                // Fetch the analysis from the API
+                fetch(`/api/analysis?id=${fileId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Error retrieving analysis: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(response => {
+                        console.log('Analysis retrieved:', response);
+                        
+                        if (!response.success) {
+                            throw new Error(response.message || 'Failed to retrieve analysis');
+                        }
+                        
+                        const analysisData = response.data;
+                        
+                        // Restore the original structure of the analysis results section
+                        analysisResults.innerHTML = `
+                            <div class="analysis-header">
+                                <h2>Analysis Results</h2>
+                                <span class="analysis-time">Analyzed on ${new Date(analysisData.timestamp).toLocaleString()}</span>
+                            </div>
+                            
+                            <div class="file-info">
+                                Analyzed: <span id="file-name">${analysisData.fileName}</span>
+                                <div style="margin-top: 5px; font-size: 0.8rem; color: #666;">
+                                    Storage: <span>MinIO Cloud Storage</span>
+                                </div>
+                            </div>
+                            
+                            <h3>Key Insights</h3>
+                            <div id="insights-container"></div>
+                            
+                            <h3>Metrics</h3>
+                            <div id="metrics-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin: 25px 0;"></div>
+                            
+                            <div id="topics-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0;"></div>
+                            
+                            <div class="recommendations" style="background-color: #f9f9f9; border-left: 4px solid #0078ff; padding: 15px; margin: 20px 0;">
+                                <h3>Recommendations</h3>
+                                <ul id="recommendations-list"></ul>
+                            </div>
+                        `;
+                        
+                        // Update insights
+                        const insightsContainer = document.getElementById('insights-container');
+                        insightsContainer.innerHTML = '';
+                        
+                        analysisData.analysis.keyInsights.forEach(insight => {
+                            const insightElement = document.createElement('div');
+                            insightElement.style.cssText = 'background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 10px;';
+                            insightElement.textContent = insight;
+                            insightsContainer.appendChild(insightElement);
+                        });
+                        
+                        // Update metrics
+                        const metricsContainer = document.getElementById('metrics-container');
+                        metricsContainer.innerHTML = '';
+                        
+                        // Add sentiment metric
+                        addMetric(metricsContainer, analysisData.analysis.metrics.sentiment * 100, 'Sentiment', '%');
+                        
+                        // Add confidence metric
+                        addMetric(metricsContainer, analysisData.analysis.metrics.confidence * 100, 'Confidence', '%');
+                        
+                        // Update topics
+                        const topicsContainer = document.getElementById('topics-container');
+                        topicsContainer.innerHTML = '';
+                        
+                        analysisData.analysis.metrics.topics.forEach(topic => {
+                            const topicElement = document.createElement('div');
+                            topicElement.style.cssText = 'background-color: #e0efff; color: #0078ff; padding: 5px 10px; border-radius: 20px; font-size: 0.85rem;';
+                            topicElement.textContent = topic;
+                            topicsContainer.appendChild(topicElement);
+                        });
+                        
+                        // Update recommendations
+                        const recommendationsList = document.getElementById('recommendations-list');
+                        recommendationsList.innerHTML = '';
+                        
+                        analysisData.analysis.recommendations.forEach(recommendation => {
+                            const li = document.createElement('li');
+                            li.textContent = recommendation;
+                            li.style.marginBottom = '8px';
+                            recommendationsList.appendChild(li);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error loading analysis:', error);
+                        analysisResults.innerHTML = `
+                            <div class="analysis-header">
+                                <h2>Analysis Results</h2>
+                            </div>
+                            <div class="empty-message">
+                                <p>Error loading analysis: ${error.message}</p>
+                                <p>Please try again later.</p>
+                            </div>
+                        `;
+                    });
             }
         });
     </script>
