@@ -818,6 +818,22 @@
             const mainDashboardContainer = document.querySelector('.main-dashboard');
             const reportsHeader = document.querySelector('.reports-header h2');
             
+            // Helper function to format file size
+            function formatFileSize(bytes) {
+                if (!bytes || isNaN(bytes)) return 'Unknown size';
+                
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let size = bytes;
+                let unitIndex = 0;
+                
+                while (size >= 1024 && unitIndex < units.length - 1) {
+                    size /= 1024;
+                    unitIndex++;
+                }
+                
+                return `${size.toFixed(1)} ${units[unitIndex]}`;
+            }
+            
             // Set up file upload event handlers
             if (uploadButton && fileInput) {
                 // When the upload button is clicked, trigger the hidden file input
@@ -1210,168 +1226,181 @@
                 metricsContainer.innerHTML = '';
                 recommendationsList.innerHTML = '';
                 
-                // Find the document in our loaded documents
-                const docInfo = allDocuments.find(doc => doc.objectName === documentId);
-                
-                // Set the file name and size if document is found
-                if (docInfo) {
-                    fileName.textContent = docInfo.name || 'Unknown file';
-                    fileSize.textContent = formatFileSize(docInfo.size);
-                } else {
-                    fileName.textContent = documentId;
-                    fileSize.textContent = 'Unknown size';
-                }
-                
-                // Simple approach - we have a server endpoint that handles the various ID formats 
-                console.log(`Fetching analysis from: /api/analysis?id=${analysisId}`);
-                
-                // Fetch the analysis from the server API endpoint, let the server handle the logic
-                fetch(`/api/analysis?id=${analysisId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.json().catch(() => {
-                                throw new Error(`Analysis not found for this file`);
-                            }).then(errorData => {
-                                throw new Error(errorData.message || `Analysis not found for this file`);
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(response => {
-                        // Check if the response is valid
-                        if (!response.success) {
-                            throw new Error(response.message || 'Failed to load analysis');
-                        }
-                        
+                try {
+                    // Find the document in our loaded documents
+                    const docInfo = allDocuments.find(doc => doc.objectName === documentId);
+                    
+                    // Set the file name and size if document is found
+                    if (docInfo) {
+                        fileName.textContent = docInfo.name || 'Unknown file';
                         try {
-                            // Log the full response structure for debugging
-                            console.log('Analysis retrieved:', response);
-                            
-                            // Get the data object from the response
-                            const data = response.data;
-                            
-                            // Get the actual analysis object - it can be nested in an 'analysis' property
-                            // or can be directly in specific properties like 'summary', 'insights', etc.
-                            // If analysis property exists, use that, otherwise use the data object itself
-                            const analysisData = data.analysis || data;
-                            
-                            // DISPLAY SUMMARY
-                            if (analysisData.summary) {
-                                documentSummary.innerHTML = analysisData.summary;
-                            } else if (data.summary) {
-                                documentSummary.innerHTML = data.summary;
-                            } else {
-                                documentSummary.innerHTML = 'No summary available';
-                            }
-                            
-                            // DISPLAY INSIGHTS
-                            // Check multiple possible property names for insights
-                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
-                            
-                            if (insights && insights.length > 0) {
-                                const insightsList = document.createElement('ul');
-                                insightsList.className = 'insight-list';
-                                
-                                insights.forEach(insight => {
-                                    const insightItem = document.createElement('li');
-                                    insightItem.className = 'insight-item';
-                                    insightItem.textContent = insight;
-                                    insightsList.appendChild(insightItem);
-                                });
-                                
-                                insightsContainer.innerHTML = '';
-                                insightsContainer.appendChild(insightsList);
-                            } else {
-                                insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
-                            }
-                            
-                            // DISPLAY METRICS
-                            const metrics = analysisData.metrics || data.metrics || {};
-                            
-                            if (metrics && Object.keys(metrics).length > 0) {
-                                metricsContainer.innerHTML = '';
-                                
-                                for (const [key, value] of Object.entries(metrics)) {
-                                    const metricCard = document.createElement('div');
-                                    metricCard.className = 'metric-card';
-                                    
-                                    let displayValue = value;
-                                    if (Array.isArray(value)) {
-                                        displayValue = value.join(', ');
-                                    } else if (typeof value === 'object') {
-                                        displayValue = JSON.stringify(value);
-                                    }
-                                    
-                                    metricCard.innerHTML = `
-                                        <div class="metric-value">${displayValue}</div>
-                                        <div class="metric-label">${key}</div>
-                                    `;
-                                    
-                                    metricsContainer.appendChild(metricCard);
-                                }
-                            } else {
-                                metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
-                            }
-                            
-                            // DISPLAY RECOMMENDATIONS
-                            const recommendations = analysisData.recommendations || data.recommendations || [];
-                            
-                            if (recommendations && recommendations.length > 0) {
-                                recommendationsList.innerHTML = '';
-                                
-                                recommendations.forEach(recommendation => {
-                                    const recommendationItem = document.createElement('li');
-                                    recommendationItem.textContent = recommendation;
-                                    recommendationsList.appendChild(recommendationItem);
-                                });
-                            } else {
-                                recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
-                            }
-                            
-                            // FALLBACK: Display raw data if no structured content was found
-                            const hasContent = analysisData.summary || 
-                                              (insights && insights.length > 0) || 
-                                              (Object.keys(metrics).length > 0) || 
-                                              (recommendations && recommendations.length > 0);
-                            
-                            if (!hasContent) {
-                                console.warn('No structured analysis data found, displaying raw data');
-                                documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
-                                    '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
-                                    JSON.stringify(data, null, 2) + 
-                                    '</pre>';
-                            }
-                        } catch (parseError) {
-                            console.error('Error parsing analysis data:', parseError);
-                            documentSummary.innerHTML = `<div class="error-message">Error parsing analysis data: ${parseError.message}</div>`;
-                            insightsContainer.innerHTML = '';
-                            metricsContainer.innerHTML = '';
-                            recommendationsList.innerHTML = '';
+                            fileSize.textContent = formatFileSize(docInfo.size);
+                        } catch (e) {
+                            console.warn('Error formatting file size:', e);
+                            fileSize.textContent = docInfo.size ? `${docInfo.size} bytes` : 'Unknown size';
                         }
-                        
-                        // Scroll to analysis results
-                        analysisResults.scrollIntoView({ behavior: 'smooth' });
-                    })
-                    .catch(error => {
-                        console.error('Error loading analysis:', error);
-                        
-                        // Display a more helpful error message with suggestions
-                        documentSummary.innerHTML = `
-                            <div class="error-message">
-                                <h3>Error loading analysis: ${error.message}</h3>
-                                <p>This could be because:</p>
-                                <ul>
-                                    <li>The document has not been analyzed yet</li>
-                                    <li>The analysis file may have a different name format than expected</li>
-                                    <li>The analysis file may have been removed or corrupted</li>
-                                </ul>
-                                <p>You can try uploading the document again to generate a new analysis.</p>
-                            </div>
-                        `;
-                        
-                        // Scroll to analysis results
-                        analysisResults.scrollIntoView({ behavior: 'smooth' });
-                    });
+                    } else {
+                        fileName.textContent = documentId;
+                        fileSize.textContent = 'Unknown size';
+                    }
+                    
+                    // Log details for debugging
+                    console.log(`Fetching analysis data for ID: ${analysisId}`);
+                    
+                    // Fetch the analysis from the server API endpoint, let the server handle the logic
+                    fetch(`/api/analysis?id=${analysisId}`)
+                        .then(response => {
+                            console.log(`Analysis API response status: ${response.status}`);
+                            if (!response.ok) {
+                                return response.json().catch(() => {
+                                    throw new Error(`Analysis not found for this file`);
+                                }).then(errorData => {
+                                    throw new Error(errorData.message || `Analysis not found for this file`);
+                                });
+                            }
+                            return response.json();
+                        })
+                        .then(response => {
+                            // Check if the response is valid
+                            if (!response.success) {
+                                throw new Error(response.message || 'Failed to load analysis');
+                            }
+                            
+                            try {
+                                // Log the full response structure for debugging
+                                console.log('Analysis data retrieved:', response);
+                                
+                                // Get the data object from the response
+                                const data = response.data;
+                                
+                                // Get the actual analysis object - it can be nested in an 'analysis' property
+                                // or can be directly in specific properties like 'summary', 'insights', etc.
+                                // If analysis property exists, use that, otherwise use the data object itself
+                                const analysisData = data.analysis || data;
+                                
+                                // DISPLAY SUMMARY
+                                if (analysisData.summary) {
+                                    documentSummary.innerHTML = analysisData.summary;
+                                } else if (data.summary) {
+                                    documentSummary.innerHTML = data.summary;
+                                } else {
+                                    documentSummary.innerHTML = 'No summary available';
+                                }
+                                
+                                // DISPLAY INSIGHTS
+                                // Check multiple possible property names for insights
+                                const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
+                                
+                                if (insights && insights.length > 0) {
+                                    const insightsList = document.createElement('ul');
+                                    insightsList.className = 'insight-list';
+                                    
+                                    insights.forEach(insight => {
+                                        const insightItem = document.createElement('li');
+                                        insightItem.className = 'insight-item';
+                                        insightItem.textContent = insight;
+                                        insightsList.appendChild(insightItem);
+                                    });
+                                    
+                                    insightsContainer.innerHTML = '';
+                                    insightsContainer.appendChild(insightsList);
+                                } else {
+                                    insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
+                                }
+                                
+                                // DISPLAY METRICS
+                                const metrics = analysisData.metrics || data.metrics || {};
+                                
+                                if (metrics && Object.keys(metrics).length > 0) {
+                                    metricsContainer.innerHTML = '';
+                                    
+                                    for (const [key, value] of Object.entries(metrics)) {
+                                        const metricCard = document.createElement('div');
+                                        metricCard.className = 'metric-card';
+                                        
+                                        let displayValue = value;
+                                        if (Array.isArray(value)) {
+                                            displayValue = value.join(', ');
+                                        } else if (typeof value === 'object') {
+                                            displayValue = JSON.stringify(value);
+                                        }
+                                        
+                                        metricCard.innerHTML = `
+                                            <div class="metric-value">${displayValue}</div>
+                                            <div class="metric-label">${key}</div>
+                                        `;
+                                        
+                                        metricsContainer.appendChild(metricCard);
+                                    }
+                                } else {
+                                    metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                                }
+                                
+                                // DISPLAY RECOMMENDATIONS
+                                const recommendations = analysisData.recommendations || data.recommendations || [];
+                                
+                                if (recommendations && recommendations.length > 0) {
+                                    recommendationsList.innerHTML = '';
+                                    
+                                    recommendations.forEach(recommendation => {
+                                        const recommendationItem = document.createElement('li');
+                                        recommendationItem.textContent = recommendation;
+                                        recommendationsList.appendChild(recommendationItem);
+                                    });
+                                } else {
+                                    recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                                }
+                                
+                                // FALLBACK: Display raw data if no structured content was found
+                                const hasContent = analysisData.summary || 
+                                                (insights && insights.length > 0) || 
+                                                (Object.keys(metrics).length > 0) || 
+                                                (recommendations && recommendations.length > 0);
+                                
+                                if (!hasContent) {
+                                    console.warn('No structured analysis data found, displaying raw data');
+                                    documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
+                                        '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
+                                        JSON.stringify(data, null, 2) + 
+                                        '</pre>';
+                                }
+                            } catch (parseError) {
+                                console.error('Error parsing analysis data:', parseError);
+                                documentSummary.innerHTML = `<div class="error-message">Error parsing analysis data: ${parseError.message}</div>`;
+                                insightsContainer.innerHTML = '';
+                                metricsContainer.innerHTML = '';
+                                recommendationsList.innerHTML = '';
+                            }
+                            
+                            // Scroll to analysis results
+                            analysisResults.scrollIntoView({ behavior: 'smooth' });
+                        })
+                        .catch(error => {
+                            console.error('Error loading analysis:', error);
+                            
+                            // Display a more helpful error message with suggestions
+                            documentSummary.innerHTML = `
+                                <div class="error-message">
+                                    <h3>Error loading analysis: ${error.message}</h3>
+                                    <p>This could be because:</p>
+                                    <ul>
+                                        <li>The document has not been analyzed yet</li>
+                                        <li>The analysis file may have a different name format than expected</li>
+                                        <li>The analysis file may have been removed or corrupted</li>
+                                    </ul>
+                                    <p>You can try uploading the document again to generate a new analysis.</p>
+                                </div>
+                            `;
+                            
+                            // Scroll to analysis results
+                            analysisResults.scrollIntoView({ behavior: 'smooth' });
+                        });
+                } catch (e) {
+                    console.error('Unexpected error in loadAnalysisForDocument:', e);
+                    documentSummary.innerHTML = `<div class="error-message">Unexpected error: ${e.message}</div>`;
+                    // Ensure we still scroll to analysis section even on error
+                    analysisResults.scrollIntoView({ behavior: 'smooth' });
+                }
             }
             
             // Function to display only the 5 latest documents on the dashboard

@@ -1440,25 +1440,26 @@ async function getAnalysisFromMinIO(fileId) {
   }
 
   try {
-    console.log(`[MINIO] Retrieving analysis results for object ${fileId} (analysis ID: analysis-${fileId.replace(/^\d+\-/, '')})`);
+    console.log(`[MINIO] Retrieving analysis results for fileId: "${fileId}"`);
     
-    // First try the original approach that works in the local environment
-    // If the ID doesn't already start with 'analysis-', prepend it and remove the timestamp prefix
-    let analysisId;
-    if (fileId.startsWith('analysis-')) {
-      analysisId = fileId;
-    } else {
-      // Remove the timestamp prefix (e.g., 1743274452783-)
-      const baseFileName = fileId.replace(/^\d+\-/, '');
-      analysisId = `analysis-${baseFileName}`;
-    }
+    // First, determine what kind of ID we have and log details to help debug
+    const hasTimestamp = /^\d+\-/.test(fileId);
+    const hasAnalysisPrefix = fileId.startsWith('analysis-');
     
-    // Log the ID we're trying
-    console.log(`[MINIO] Trying to retrieve analysis with ID: ${analysisId}`);
+    console.log(`[MINIO] ID Analysis - Has timestamp prefix: ${hasTimestamp}, Has analysis- prefix: ${hasAnalysisPrefix}`);
+    
+    // Create a base ID without the timestamp prefix (if present)
+    const baseFileId = hasTimestamp ? fileId.replace(/^\d+\-/, '') : fileId;
+    console.log(`[MINIO] Base file ID (without timestamp): "${baseFileId}"`);
+    
+    // Attempt 1: Try with "analysis-" prefix + baseFileId (standard format)
+    let analysisId = hasAnalysisPrefix ? fileId : `analysis-${baseFileId}`;
+    console.log(`[MINIO] Attempt 1 - Using ID: "${analysisId}"`);
     
     try {
       // Get the analysis object from MinIO
       const dataStream = await minioClient.getObject(bucketName, analysisId);
+      console.log(`[MINIO] Successfully found object with ID: "${analysisId}"`);
       
       // Read and return the analysis data
       return new Promise((resolve, reject) => {
@@ -1485,14 +1486,16 @@ async function getAnalysisFromMinIO(fileId) {
         });
       });
     } catch (err) {
-      console.log(`[MINIO] Error retrieving analysis with ID ${analysisId}: ${err.message}`);
-      // If the first attempt failed and we didn't already try with the full ID, try that as fallback
-      if (!fileId.startsWith('analysis-')) {
+      console.log(`[MINIO] Attempt 1 failed - Error retrieving analysis with ID "${analysisId}": ${err.message}`);
+      
+      // Attempt 2: If we didn't try with the full ID yet, try with "analysis-" + full fileId
+      if (!hasAnalysisPrefix && analysisId !== `analysis-${fileId}`) {
         const fullAnalysisId = `analysis-${fileId}`;
-        console.log(`[MINIO] Trying alternative ID: ${fullAnalysisId}`);
+        console.log(`[MINIO] Attempt 2 - Using full ID: "${fullAnalysisId}"`);
         
         try {
           const dataStream = await minioClient.getObject(bucketName, fullAnalysisId);
+          console.log(`[MINIO] Successfully found object with full ID: "${fullAnalysisId}"`);
           
           return new Promise((resolve, reject) => {
             let dataBuffer = '';
@@ -1502,7 +1505,7 @@ async function getAnalysisFromMinIO(fileId) {
             });
             
             dataStream.on('end', () => {
-              console.log(`[MINIO] Successfully retrieved analysis data with alternative ID (${dataBuffer.length} bytes)`);
+              console.log(`[MINIO] Successfully retrieved analysis data with full ID (${dataBuffer.length} bytes)`);
               try {
                 const analysisData = JSON.parse(dataBuffer);
                 resolve(analysisData);
@@ -1513,20 +1516,62 @@ async function getAnalysisFromMinIO(fileId) {
             });
             
             dataStream.on('error', err => {
-              console.error(`[MINIO] Error reading analysis with alternative ID: ${err.message}`);
+              console.error(`[MINIO] Error reading analysis with full ID: ${err.message}`);
               reject(err);
             });
           });
         } catch (altErr) {
-          console.log(`[MINIO] Error retrieving analysis with alternative ID ${fullAnalysisId}: ${altErr.message}`);
-          return null;
+          console.log(`[MINIO] Attempt 2 failed - Error retrieving analysis with full ID "${fullAnalysisId}": ${altErr.message}`);
+          
+          // Attempt 3: Try without any prefix
+          if (baseFileId !== fileId && baseFileId !== analysisId) {
+            console.log(`[MINIO] Attempt 3 - Using base ID without any prefix: "${baseFileId}"`);
+            
+            try {
+              const dataStream = await minioClient.getObject(bucketName, baseFileId);
+              console.log(`[MINIO] Successfully found object with base ID: "${baseFileId}"`);
+              
+              return new Promise((resolve, reject) => {
+                let dataBuffer = '';
+                
+                dataStream.on('data', chunk => {
+                  dataBuffer += chunk;
+                });
+                
+                dataStream.on('end', () => {
+                  console.log(`[MINIO] Successfully retrieved analysis data with base ID (${dataBuffer.length} bytes)`);
+                  try {
+                    const analysisData = JSON.parse(dataBuffer);
+                    resolve(analysisData);
+                  } catch (err) {
+                    console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
+                    reject(err);
+                  }
+                });
+                
+                dataStream.on('error', err => {
+                  console.error(`[MINIO] Error reading analysis with base ID: ${err.message}`);
+                  reject(err);
+                });
+              });
+            } catch (baseErr) {
+              console.log(`[MINIO] Attempt 3 failed - Error retrieving analysis with base ID "${baseFileId}": ${baseErr.message}`);
+              console.log(`[MINIO] All retrieval attempts failed for ${fileId}. Analysis not found.`);
+              return null;
+            }
+          } else {
+            console.log(`[MINIO] No more ID variations to try for ${fileId}. Analysis not found.`);
+            return null;
+          }
         }
       } else {
+        console.log(`[MINIO] No more ID variations to try for ${fileId}. Analysis not found.`);
         return null;
       }
     }
   } catch (err) {
-    console.error(`[MINIO] Error in getAnalysisFromMinIO: ${err.message}`);
+    console.error(`[MINIO] Unexpected error in getAnalysisFromMinIO: ${err.message}`);
+    console.error(err.stack);
     return null;
   }
 }
