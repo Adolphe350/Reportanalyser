@@ -817,26 +817,8 @@
                 });
             }
             
-            // Function to load recent documents
-            function loadRecentDocuments() {
-                console.log('Loading recent documents...');
-                documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
-                
-                // Fetch documents from the API
-                fetch('/api/files')
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('Documents retrieved:', data);
-                        displayDocumentsList(data.files || []);
-                    })
-                    .catch(error => {
-                        console.error('Error loading documents:', error);
-                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
-                    });
-            }
-            
             // Function to display the list of documents
-            function displayDocumentsList(documents) {
+            function displayDocumentsList(documents, totalFiles) {
                 console.log('Displaying documents list:', documents);
                 
                 if (documents.length === 0) {
@@ -910,6 +892,71 @@
                 
                 documentsContainer.innerHTML = '';
                 documentsContainer.appendChild(documentsList);
+                
+                // Add message about limited documents if there are more documents available
+                if (totalFiles > documents.length) {
+                    const limitMessage = document.createElement('div');
+                    limitMessage.className = 'limit-message';
+                    limitMessage.style.marginTop = '15px';
+                    limitMessage.style.fontSize = '0.9rem';
+                    limitMessage.style.color = '#666';
+                    limitMessage.style.textAlign = 'center';
+                    limitMessage.innerHTML = `Showing ${documents.length} latest documents of ${totalFiles} total. `;
+                    
+                    const viewAllButton = document.createElement('button');
+                    viewAllButton.textContent = 'View All Documents';
+                    viewAllButton.className = 'btn-link';
+                    viewAllButton.style.background = 'none';
+                    viewAllButton.style.border = 'none';
+                    viewAllButton.style.color = '#0078ff';
+                    viewAllButton.style.cursor = 'pointer';
+                    viewAllButton.style.textDecoration = 'underline';
+                    viewAllButton.style.padding = '0';
+                    viewAllButton.style.font = 'inherit';
+                    
+                    viewAllButton.addEventListener('click', function() {
+                        loadAllDocuments();
+                    });
+                    
+                    limitMessage.appendChild(viewAllButton);
+                    documentsContainer.appendChild(limitMessage);
+                }
+            }
+            
+            // Function to load all documents
+            function loadAllDocuments() {
+                console.log('Loading all documents...');
+                documentsContainer.innerHTML = '<div class="loading-spinner">Loading all documents...</div>';
+                
+                // Fetch all documents from the API
+                fetch('/api/files?limit=0')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('All documents retrieved:', data);
+                        displayDocumentsList(data.files || [], data.totalFiles || data.files.length);
+                    })
+                    .catch(error => {
+                        console.error('Error loading documents:', error);
+                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                    });
+            }
+            
+            // Function to load recent documents
+            function loadRecentDocuments() {
+                console.log('Loading recent documents...');
+                documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
+                
+                // Fetch documents from the API
+                fetch('/api/files')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Documents retrieved:', data);
+                        displayDocumentsList(data.files || [], data.totalFiles || data.files.length);
+                    })
+                    .catch(error => {
+                        console.error('Error loading documents:', error);
+                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                    });
             }
             
             // Upload button click handler

@@ -1278,6 +1278,23 @@ async function handleListFiles(req, res) {
     
     console.log(`[API] Files found: ${filesList.length}`);
     
+    // Get the limit from query parameters, default to 5
+    const urlParts = req.url.split('?');
+    let limit = 5; // Default limit of 5 documents
+    
+    if (urlParts.length > 1) {
+      const queryParams = new URLSearchParams(urlParts[1]);
+      const limitParam = queryParams.get('limit');
+      if (limitParam && !isNaN(parseInt(limitParam))) {
+        limit = parseInt(limitParam);
+      }
+    }
+    
+    // Apply limit to the files list (already sorted newest first in listFilesFromMinIO)
+    const limitedFilesList = limit > 0 ? filesList.slice(0, limit) : filesList;
+    
+    console.log(`[API] Returning ${limitedFilesList.length} files (limited to ${limit})`);
+    
     // Return the list of files
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -1288,7 +1305,8 @@ async function handleListFiles(req, res) {
     res.end(JSON.stringify({
       success: true,
       message: 'Files retrieved successfully',
-      files: filesList
+      files: limitedFilesList,
+      totalFiles: filesList.length // Include total count for pagination if needed later
     }));
     
   } catch (err) {
