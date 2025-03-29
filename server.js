@@ -1442,101 +1442,18 @@ async function getAnalysisFromMinIO(fileId) {
   try {
     console.log(`[MINIO] Retrieving analysis results for fileId: "${fileId}"`);
     
-    // Simplified approach: Format the ID as needed and try once
-    let analysisId = fileId;
+    // Check if the fileId starts with 'analysis-' and adjust if necessary
+    const analysisId = fileId.startsWith('analysis-') ? fileId : `analysis-${fileId}`;
+    console.log(`[MinIO] Using analysis ID: ${analysisId}`);
     
-    // If the ID doesn't already have the analysis- prefix, add it
-    if (!fileId.startsWith('analysis-')) {
-      // Check if there's a timestamp prefix and remove it
-      const baseFileId = fileId.replace(/^\d+\-/, '');
-      analysisId = `analysis-${baseFileId}`;
-    }
-    
-    console.log(`[MINIO] Attempting to retrieve with ID: "${analysisId}"`);
-    
-    // Add a timeout to avoid hanging forever
     try {
-      // Get the analysis object from MinIO with a simpler approach
-      const dataStream = await minioClient.getObject(bucketName, analysisId);
-      
-      // Read and return the analysis data
-      return new Promise((resolve, reject) => {
-        let dataBuffer = '';
-        
-        // Set a timeout to avoid hanging
-        const timeout = setTimeout(() => {
-          reject(new Error('Timed out waiting for analysis data'));
-        }, 5000); // 5 second timeout
-        
-        dataStream.on('data', chunk => {
-          dataBuffer += chunk;
-        });
-        
-        dataStream.on('end', () => {
-          clearTimeout(timeout);
-          console.log(`[MINIO] Successfully retrieved analysis data (${dataBuffer.length} bytes)`);
-          try {
-            const analysisData = JSON.parse(dataBuffer);
-            resolve(analysisData);
-          } catch (err) {
-            console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-            reject(err);
-          }
-        });
-        
-        dataStream.on('error', err => {
-          clearTimeout(timeout);
-          console.error(`[MINIO] Error reading analysis: ${err.message}`);
-          reject(err);
-        });
-      });
-    } catch (err) {
-      console.log(`[MINIO] Error retrieving analysis with ID "${analysisId}": ${err.message}`);
-      
-      // Try one fallback if needed: the original fileId without modification
-      if (analysisId !== fileId) {
-        console.log(`[MINIO] Trying fallback with original ID: "${fileId}"`);
-        
-        try {
-          const dataStream = await minioClient.getObject(bucketName, fileId);
-          
-          return new Promise((resolve, reject) => {
-            let dataBuffer = '';
-            
-            // Set a timeout to avoid hanging
-            const timeout = setTimeout(() => {
-              reject(new Error('Timed out waiting for analysis data'));
-            }, 5000); // 5 second timeout
-            
-            dataStream.on('data', chunk => {
-              dataBuffer += chunk;
-            });
-            
-            dataStream.on('end', () => {
-              clearTimeout(timeout);
-              console.log(`[MINIO] Successfully retrieved analysis data with original ID (${dataBuffer.length} bytes)`);
-              try {
-                const analysisData = JSON.parse(dataBuffer);
-                resolve(analysisData);
-              } catch (err) {
-                console.error(`[MINIO] Error parsing analysis data: ${err.message}`);
-                reject(err);
-              }
-            });
-            
-            dataStream.on('error', err => {
-              clearTimeout(timeout);
-              console.error(`[MINIO] Error reading analysis with original ID: ${err.message}`);
-              reject(err);
-            });
-          });
-        } catch (fallbackErr) {
-          console.log(`[MINIO] Fallback failed - Error retrieving analysis with original ID "${fileId}": ${fallbackErr.message}`);
-          return null;
-        }
-      } else {
+        // Attempt to retrieve the analysis data
+        const data = await minioClient.getObject('analysis-bucket', analysisId);
+        console.log(`[MinIO] Successfully retrieved analysis for ID: ${analysisId}`);
+        return data;
+    } catch (error) {
+        console.error(`[MinIO] Error retrieving analysis for ID: ${analysisId}`, error);
         return null;
-      }
     }
   } catch (err) {
     console.error(`[MINIO] Unexpected error in getAnalysisFromMinIO: ${err.message}`);
