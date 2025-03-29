@@ -852,6 +852,7 @@
                 // Get the sidebar menu items
                 const dashboardLink = document.querySelector('.sidebar-menu li:nth-child(1) a');
                 const allReportsLink = document.querySelector('.sidebar-menu li:nth-child(2) a');
+                const analyticsLink = document.querySelector('.sidebar-menu li:nth-child(3) a');
                 const uploadArea = document.querySelector('.upload-area');
                 
                 // Set up click handler for All Reports link
@@ -874,6 +875,15 @@
                         if (uploadArea) {
                             uploadArea.style.display = 'none';
                         }
+                        
+                        // Hide analytics view if it exists
+                        const analyticsView = document.querySelector('.analytics-view');
+                        if (analyticsView) {
+                            analyticsView.style.display = 'none';
+                        }
+                        
+                        // Show documents container
+                        documentsContainer.parentElement.style.display = 'block';
                         
                         // Switch to all documents view
                         currentView = 'all';
@@ -902,9 +912,45 @@
                             uploadArea.style.display = 'block';
                         }
                         
+                        // Hide analytics view if it exists
+                        const analyticsView = document.querySelector('.analytics-view');
+                        if (analyticsView) {
+                            analyticsView.style.display = 'none';
+                        }
+                        
+                        // Show documents container
+                        documentsContainer.parentElement.style.display = 'block';
+                        
                         // Switch to recent documents view
                         currentView = 'recent';
                         displayDocumentsList(allDocuments);
+                    });
+                }
+                
+                // Set up click handler for Analytics link
+                if (analyticsLink) {
+                    analyticsLink.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        
+                        // Update the active class for sidebar items
+                        document.querySelectorAll('.sidebar-menu a').forEach(link => {
+                            link.classList.remove('active');
+                        });
+                        this.classList.add('active');
+                        
+                        // Hide upload area in Analytics view
+                        if (uploadArea) {
+                            uploadArea.style.display = 'none';
+                        }
+                        
+                        // Hide documents container
+                        documentsContainer.parentElement.style.display = 'none';
+                        
+                        // Initialize or display analytics view
+                        initializeAnalyticsView();
+                        
+                        // Current view is analytics
+                        currentView = 'analytics';
                     });
                 }
             }
@@ -947,6 +993,303 @@
                     });
             }
             
+            // Function to load recent documents
+            function loadRecentDocuments() {
+                console.log('Loading recent documents...');
+                documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
+                
+                // Add timeout for fetch operation
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                
+                // Fetch documents from the API
+                fetch('/api/files', {
+                    signal: controller.signal
+                })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Recent documents retrieved:', data);
+                        if (data && data.files) {
+                            allDocuments = data.files || [];
+                            displayDocumentsList(allDocuments);
+                        } else {
+                            console.warn('API response missing files array:', data);
+                            displayDocumentsList([]);
+                        }
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        console.error('Error loading documents:', error);
+                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
+                    });
+            }
+            
+            // Function to initialize or display the analytics view
+            function initializeAnalyticsView() {
+                // Check if analytics view already exists
+                let analyticsView = document.querySelector('.analytics-view');
+                
+                // If analytics view doesn't exist, create it
+                if (!analyticsView) {
+                    analyticsView = document.createElement('div');
+                    analyticsView.className = 'analytics-view';
+                    analyticsView.style.backgroundColor = 'white';
+                    analyticsView.style.borderRadius = '8px';
+                    analyticsView.style.boxShadow = '0 3px 10px rgba(0, 0, 0, 0.05)';
+                    analyticsView.style.padding = '30px';
+                    analyticsView.style.marginBottom = '30px';
+                    
+                    // Create analytics content
+                    analyticsView.innerHTML = `
+                        <div class="analytics-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                            <h2>Analytics Dashboard</h2>
+                            <button id="refresh-analytics" class="btn btn-outline">Refresh Data</button>
+                        </div>
+                        
+                        <div class="analytics-overview" style="margin-bottom: 30px;">
+                            <h3>Documents Overview</h3>
+                            <div class="analytics-cards" style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
+                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #f0f7ff; border-radius: 8px; padding: 20px; text-align: center;">
+                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #0078ff; margin: 10px 0;" id="total-documents">0</div>
+                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Total Documents</div>
+                                </div>
+                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #f0fff7; border-radius: 8px; padding: 20px; text-align: center;">
+                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #00c853; margin: 10px 0;" id="analyzed-documents">0</div>
+                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Analyzed Documents</div>
+                                </div>
+                                <div class="analytics-card" style="flex: 1; min-width: 200px; background-color: #fff8f0; border-radius: 8px; padding: 20px; text-align: center;">
+                                    <div class="card-value" style="font-size: 2.5rem; font-weight: bold; color: #ff9800; margin: 10px 0;" id="pending-documents">0</div>
+                                    <div class="card-label" style="color: #666; font-size: 0.9rem;">Pending Analysis</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="analytics-types" style="margin-bottom: 30px;">
+                            <h3>Document Types</h3>
+                            <div class="document-types" style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px;">
+                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
+                                    <div style="background-color: #e3f2fd; padding: 10px; border-radius: 50%; margin-right: 15px;">
+                                        <svg fill="#0078ff" width="24" height="24" viewBox="0 0 24 24">
+                                            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 500;">PDF Documents</div>
+                                        <div style="font-size: 1.5rem; font-weight: bold; color: #0078ff;" id="pdf-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
+                                    <div style="background-color: #e8f5e9; padding: 10px; border-radius: 50%; margin-right: 15px;">
+                                        <svg fill="#00c853" width="24" height="24" viewBox="0 0 24 24">
+                                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8 4h1v5H8V4zm3 0h1v5h-1V4zm3 0h1v5h-1V4zm-6 6h8v1H8v-1zm0 2h8v1H8v-1zm0 2h8v1H8v-1z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 500;">Word Documents</div>
+                                        <div style="font-size: 1.5rem; font-weight: bold; color: #00c853;" id="word-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="document-type" style="flex: 1; min-width: 150px; background-color: #f9f9f9; border-radius: 8px; padding: 15px; display: flex; align-items: center;">
+                                    <div style="background-color: #fff3e0; padding: 10px; border-radius: 50%; margin-right: 15px;">
+                                        <svg fill="#ff9800" width="24" height="24" viewBox="0 0 24 24">
+                                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 500;">Other Files</div>
+                                        <div style="font-size: 1.5rem; font-weight: bold; color: #ff9800;" id="other-count">0</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="analytics-activity" style="margin-bottom: 30px;">
+                            <h3>Recent Activity</h3>
+                            <div class="recent-activity" style="margin-top: 20px; background-color: #f9f9f9; border-radius: 8px; padding: 20px;" id="recent-activity">
+                                <div class="loading-spinner">Loading analytics data...</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Add analytics view to the main dashboard
+                    mainDashboardContainer.appendChild(analyticsView);
+                    
+                    // Add event listener for refresh analytics button
+                    const refreshAnalyticsButton = analyticsView.querySelector('#refresh-analytics');
+                    if (refreshAnalyticsButton) {
+                        refreshAnalyticsButton.addEventListener('click', function() {
+                            loadAnalyticsData();
+                        });
+                    }
+                } else {
+                    // If it exists, make it visible
+                    analyticsView.style.display = 'block';
+                }
+                
+                // Load analytics data
+                loadAnalyticsData();
+            }
+            
+            // Function to load analytics data
+            function loadAnalyticsData() {
+                console.log('Loading analytics data...');
+                
+                // Set loading state for activity section
+                const recentActivity = document.getElementById('recent-activity');
+                if (recentActivity) {
+                    recentActivity.innerHTML = '<div class="loading-spinner">Loading analytics data...</div>';
+                }
+                
+                // Add timeout for fetch operation
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                
+                // Fetch documents from the API
+                fetch('/api/files', {
+                    signal: controller.signal
+                })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status} ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Analytics data retrieved:', data);
+                        if (data && data.files) {
+                            // Update analytics visualization
+                            updateAnalyticsVisualization(data.files);
+                        } else {
+                            console.warn('API response missing files array:', data);
+                            updateAnalyticsVisualization([]);
+                        }
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        console.error('Error loading analytics data:', error);
+                        const recentActivity = document.getElementById('recent-activity');
+                        if (recentActivity) {
+                            recentActivity.innerHTML = '<div class="empty-message">Error loading analytics data. Please try again.</div>';
+                        }
+                    });
+            }
+            
+            // Function to update analytics visualization
+            function updateAnalyticsVisualization(documents) {
+                // Count totals
+                const totalDocuments = documents.length;
+                const analyzedDocuments = documents.filter(doc => doc.hasAnalysis).length;
+                const pendingDocuments = totalDocuments - analyzedDocuments;
+                
+                // Update document counts
+                document.getElementById('total-documents').textContent = totalDocuments;
+                document.getElementById('analyzed-documents').textContent = analyzedDocuments;
+                document.getElementById('pending-documents').textContent = pendingDocuments;
+                
+                // Count document types
+                let pdfCount = 0;
+                let wordCount = 0;
+                let otherCount = 0;
+                
+                documents.forEach(doc => {
+                    if (doc.name) {
+                        const extension = doc.name.split('.').pop().toLowerCase();
+                        if (extension === 'pdf') {
+                            pdfCount++;
+                        } else if (['doc', 'docx'].includes(extension)) {
+                            wordCount++;
+                        } else {
+                            otherCount++;
+                        }
+                    } else {
+                        otherCount++;
+                    }
+                });
+                
+                // Update document type counts
+                document.getElementById('pdf-count').textContent = pdfCount;
+                document.getElementById('word-count').textContent = wordCount;
+                document.getElementById('other-count').textContent = otherCount;
+                
+                // Update recent activity
+                const recentActivity = document.getElementById('recent-activity');
+                if (recentActivity) {
+                    if (documents.length === 0) {
+                        recentActivity.innerHTML = '<div class="empty-message">No documents found. Upload documents to view analytics.</div>';
+                        return;
+                    }
+                    
+                    // Sort documents by upload date (newest first)
+                    const sortedDocuments = [...documents].sort((a, b) => {
+                        const dateA = a.lastModified ? new Date(a.lastModified) : new Date(0);
+                        const dateB = b.lastModified ? new Date(b.lastModified) : new Date(0);
+                        return dateB - dateA;
+                    });
+                    
+                    // Take the 5 most recent documents
+                    const recentDocuments = sortedDocuments.slice(0, 5);
+                    
+                    // Create activity list
+                    const activityList = document.createElement('ul');
+                    activityList.style.listStyle = 'none';
+                    activityList.style.padding = '0';
+                    
+                    recentDocuments.forEach(doc => {
+                        const date = doc.lastModified ? new Date(doc.lastModified) : new Date();
+                        const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                        
+                        const listItem = document.createElement('li');
+                        listItem.style.padding = '10px 0';
+                        listItem.style.borderBottom = '1px solid #eee';
+                        listItem.style.display = 'flex';
+                        listItem.style.alignItems = 'center';
+                        listItem.style.justifyContent = 'space-between';
+                        
+                        // Determine icon based on file type
+                        let iconColor = '#0078ff';
+                        if (doc.name) {
+                            const extension = doc.name.split('.').pop().toLowerCase();
+                            if (extension === 'pdf') {
+                                iconColor = '#0078ff';
+                            } else if (['doc', 'docx'].includes(extension)) {
+                                iconColor = '#00c853';
+                            } else {
+                                iconColor = '#ff9800';
+                            }
+                        }
+                        
+                        listItem.innerHTML = `
+                            <div style="display: flex; align-items: center;">
+                                <div style="background-color: ${iconColor}1a; padding: 8px; border-radius: 50%; margin-right: 15px;">
+                                    <i class="fas fa-file" style="color: ${iconColor};"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 500;">${doc.name || 'Unnamed document'}</div>
+                                    <div style="font-size: 0.8rem; color: #666;">Uploaded ${formattedDate}</div>
+                                </div>
+                            </div>
+                            <div>
+                                ${doc.hasAnalysis ? 
+                                    '<span style="background-color: #e8f5e9; color: #00c853; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">Analyzed</span>' : 
+                                    '<span style="background-color: #fff8e1; color: #ff9800; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">Pending</span>'}
+                            </div>
+                        `;
+                        
+                        activityList.appendChild(listItem);
+                    });
+                    
+                    recentActivity.innerHTML = '';
+                    recentActivity.appendChild(activityList);
+                }
+            }
+            
             // Function to display all documents without limit
             function displayAllDocumentsList(documents) {
                 console.log('Displaying all documents list:', documents);
@@ -982,513 +1325,6 @@
                 
                 documents.forEach(doc => {
                     // The same document item creation code from displayDocumentsList
-                    // Determine icon based on file type
-                    let iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>';
-                    
-                    if (doc.name) {
-                        const extension = doc.name.split('.').pop().toLowerCase();
-                        if (['pdf'].includes(extension)) {
-                            iconPath = '<path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"></path>';
-                        } else if (['doc', 'docx'].includes(extension)) {
-                            iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8 4h1v5H8V4zm3 0h1v5h-1V4zm3 0h1v5h-1V4zm-6 6h8v1H8v-1zm0 2h8v1H8v-1zm0 2h8v1H8v-1z"></path>';
-                        }
-                    }
-                    
-                    // Format the date
-                    const date = doc.lastModified ? new Date(doc.lastModified) : new Date();
-                    const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    
-                    // Create list item
-                    const documentItem = document.createElement('li');
-                    documentItem.className = 'report-item';
-                    
-                    // Analysis badge if available
-                    const analysisBadge = doc.hasAnalysis 
-                        ? '<span class="report-status">Analyzed</span>'
-                        : '<span class="report-status pending">No Analysis</span>';
-                    
-                    documentItem.innerHTML = `
-                        <div class="report-info">
-                            <div class="report-icon">
-                                <svg fill="#0078ff" viewBox="0 0 24 24">
-                                    ${iconPath}
-                                </svg>
-                            </div>
-                            <div>
-                                <div class="report-name">${doc.name || 'Unnamed document'}</div>
-                                <div class="report-date">Uploaded ${formattedDate}</div>
-                                <div class="report-actions" style="margin-top: 5px;">
-                                    <a href="${doc.url}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
-                                        <i class="fas fa-download"></i> Download
-                                    </a>
-                                    ${doc.hasAnalysis ? `<a href="#" class="view-analysis-link" data-id="${doc.objectName}" title="View analysis" style="color: #0078ff; font-size: 0.85rem;">
-                                        <i class="fas fa-chart-line"></i> View Analysis
-                                    </a>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                        ${analysisBadge}
-                    `;
-                    
-                    // Add event listener for "View Analysis" link
-                    if (doc.hasAnalysis) {
-                        const viewAnalysisLink = documentItem.querySelector('.view-analysis-link');
-                        viewAnalysisLink.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            loadAnalysisForDocument(doc.objectName);
-                        });
-                    }
-                    
-                    documentsList.appendChild(documentItem);
-                });
-                
-                documentsContainer.innerHTML = '';
-                documentsContainer.appendChild(documentsList);
-            }
-            
-            // Function to load recent documents
-            function loadRecentDocuments() {
-                console.log('Loading recent documents...');
-                documentsContainer.innerHTML = '<div class="loading-spinner">Loading documents...</div>';
-                
-                // Add timeout for fetch operation
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-                
-                // Fetch documents from the API
-                fetch('/api/files', {
-                    signal: controller.signal
-                })
-                    .then(response => {
-                        clearTimeout(timeoutId);
-                        if (!response.ok) {
-                            throw new Error(`API error: ${response.status} ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log('Documents retrieved:', data);
-                        if (data && data.files) {
-                            allDocuments = data.files || [];
-                            displayDocumentsList(allDocuments);
-                        } else {
-                            console.warn('API response missing files array:', data);
-                            displayDocumentsList([]);
-                        }
-                    })
-                    .catch(error => {
-                        clearTimeout(timeoutId);
-                        console.error('Error loading documents:', error);
-                        documentsContainer.innerHTML = '<div class="empty-message">Error loading documents. Please try again.</div>';
-                    });
-            }
-            
-            // Upload button click handler
-            if (uploadButton) {
-                uploadButton.addEventListener('click', function() {
-                    fileInput.click();
-                });
-            }
-            
-            // File input change handler
-            if (fileInput) {
-                fileInput.addEventListener('change', function() {
-                    if (this.files && this.files[0]) {
-                        handleFileUpload(this.files[0]);
-                    }
-                });
-            }
-            
-            // Drag and drop handlers
-            if (uploadArea) {
-                uploadArea.addEventListener('dragover', function(e) {
-                    e.preventDefault();
-                    this.style.borderColor = '#0078ff';
-                    this.style.backgroundColor = '#f0f7ff';
-                });
-                
-                uploadArea.addEventListener('dragleave', function() {
-                    this.style.borderColor = '';
-                    this.style.backgroundColor = '';
-                });
-                
-                uploadArea.addEventListener('drop', function(e) {
-                    e.preventDefault();
-                    this.style.borderColor = '';
-                    this.style.backgroundColor = '';
-                    
-                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                        handleFileUpload(e.dataTransfer.files[0]);
-                    }
-                });
-            }
-            
-            // Function to handle file upload
-            function handleFileUpload(file) {
-                // Display file info
-                console.log(`Uploading file: ${file.name} (${formatFileSize(file.size)})`);
-                
-                // Update UI for upload
-                if (uploadArea) uploadArea.classList.add('uploading');
-                if (progressContainer) progressContainer.style.display = 'block';
-                
-                // Create form data
-                const formData = new FormData();
-                formData.append('file', file);
-                
-                // Create and configure XMLHttpRequest
-                const xhr = new XMLHttpRequest();
-                
-                // Set a timeout for the upload
-                const uploadTimeout = setTimeout(() => {
-                    console.error('Upload timed out after 60 seconds');
-                    xhr.abort();
-                    alert('Upload timed out. Please try again with a smaller file or check your connection.');
-                    resetUploadArea();
-                }, 60000); // 60 second timeout
-                
-                // Upload progress handler
-                xhr.upload.addEventListener('progress', function(e) {
-                    if (e.lengthComputable) {
-                        const percentComplete = Math.round((e.loaded / e.total) * 100);
-                        progressFill.style.width = percentComplete + '%';
-                        progressText.textContent = `Uploading... ${percentComplete}%`;
-                    }
-                });
-                
-                // Upload complete handler
-                xhr.addEventListener('load', function() {
-                    clearTimeout(uploadTimeout);
-                    
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        progressText.textContent = 'Processing file...';
-                        
-                        // Simulate analysis delay
-                        setTimeout(function() {
-                            try {
-                                const response = JSON.parse(xhr.responseText);
-                                displayAnalysisResults(response, file);
-                            } catch (error) {
-                                console.error('Error parsing response:', error);
-                                alert('There was an error analyzing the file. Please try again.');
-                                resetUploadArea();
-                            }
-                        }, 1500);
-                    } else {
-                        console.error('Upload failed:', xhr.statusText);
-                        alert('Upload failed. Please try again.');
-                        resetUploadArea();
-                    }
-                });
-                
-                // Error handler
-                xhr.addEventListener('error', function() {
-                    clearTimeout(uploadTimeout);
-                    console.error('Upload request failed');
-                    alert('Upload failed. Please check your connection and try again.');
-                    resetUploadArea();
-                });
-                
-                // Abort handler
-                xhr.addEventListener('abort', function() {
-                    clearTimeout(uploadTimeout);
-                    console.error('Upload aborted');
-                    resetUploadArea();
-                });
-                
-                // Open and send the request
-                xhr.open('POST', '/api/upload', true);
-                xhr.send(formData);
-            }
-            
-            // Function to display analysis results
-            function displayAnalysisResults(response, file) {
-                console.log('Analysis complete:', response);
-                
-                // Reset upload area
-                resetUploadArea();
-                
-                // Show analysis results section
-                analysisResults.style.display = 'block';
-                
-                // Update file info
-                document.getElementById('file-name').textContent = file.name;
-                document.getElementById('file-size').textContent = formatFileSize(file.size);
-                
-                // Update storage info if available
-                if (response.file && response.file.storage) {
-                    const storageInfoHtml = `
-                    <div style="margin-top: 5px; font-size: 0.8rem; color: #666;">
-                        Storage: <span>${response.file.storage === 'minio' ? 'MinIO Cloud Storage' : 'Local Storage'}</span>
-                        ${response.file.location ? `<a href="${response.file.location}" target="_blank" style="margin-left: 10px; color: #0078ff; text-decoration: none;">
-                            <i class="fas fa-external-link-alt"></i> View File
-                        </a>` : ''}
-                    </div>`;
-                    
-                    // Append storage info to file-info element
-                    document.querySelector('.file-info').innerHTML += storageInfoHtml;
-                }
-                
-                // Update document summary
-                const summaryContainer = document.getElementById('document-summary');
-                if (response.analysis.summary) {
-                    summaryContainer.textContent = response.analysis.summary;
-                } else {
-                    summaryContainer.textContent = 'No summary available for this document.';
-                }
-                
-                // Update insights
-                const insightsContainer = document.getElementById('insights-container');
-                insightsContainer.innerHTML = '';
-                
-                response.analysis.keyInsights.forEach(insight => {
-                    const insightElement = document.createElement('div');
-                    insightElement.style.cssText = 'background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 10px;';
-                    insightElement.textContent = insight;
-                    insightsContainer.appendChild(insightElement);
-                });
-                
-                // Update metrics
-                const metricsContainer = document.getElementById('metrics-container');
-                metricsContainer.innerHTML = '';
-                
-                // Add sentiment metric
-                addMetric(metricsContainer, response.analysis.metrics.sentiment * 100, 'Sentiment', '%');
-                
-                // Add confidence metric
-                addMetric(metricsContainer, response.analysis.metrics.confidence * 100, 'Confidence', '%');
-                
-                // Update topics
-                const topicsContainer = document.getElementById('topics-container');
-                topicsContainer.innerHTML = '';
-                
-                response.analysis.metrics.topics.forEach(topic => {
-                    const topicElement = document.createElement('div');
-                    topicElement.style.cssText = 'background-color: #e0efff; color: #0078ff; padding: 5px 10px; border-radius: 20px; font-size: 0.85rem;';
-                    topicElement.textContent = topic;
-                    topicsContainer.appendChild(topicElement);
-                });
-                
-                // Update recommendations
-                const recommendationsList = document.getElementById('recommendations-list');
-                recommendationsList.innerHTML = '';
-                
-                response.analysis.recommendations.forEach(recommendation => {
-                    const li = document.createElement('li');
-                    li.textContent = recommendation;
-                    li.style.marginBottom = '8px';
-                    recommendationsList.appendChild(li);
-                });
-                
-                // Scroll to results
-                analysisResults.scrollIntoView({ behavior: 'smooth' });
-                
-                // Refresh the documents list to include the newly analyzed document
-                loadRecentDocuments();
-            }
-            
-            // Helper function to add a metric card
-            function addMetric(container, value, label, unit = '') {
-                const metricCard = document.createElement('div');
-                metricCard.style.cssText = 'flex: 1; min-width: 120px; background-color: #f0f7ff; border-radius: 8px; padding: 15px; text-align: center;';
-                
-                const metricValue = document.createElement('div');
-                metricValue.style.cssText = 'font-size: 1.8rem; font-weight: bold; color: #0078ff; margin: 5px 0;';
-                metricValue.textContent = Math.round(value) + unit;
-                
-                const metricLabel = document.createElement('div');
-                metricLabel.style.cssText = 'color: #666; font-size: 0.9rem;';
-                metricLabel.textContent = label;
-                
-                metricCard.appendChild(metricValue);
-                metricCard.appendChild(metricLabel);
-                container.appendChild(metricCard);
-            }
-            
-            // Function to reset the upload area
-            function resetUploadArea() {
-                if (uploadArea) uploadArea.classList.remove('uploading');
-                if (progressContainer) progressContainer.style.display = 'none';
-                if (progressFill) progressFill.style.width = '0%';
-                if (progressText) progressText.textContent = 'Uploading... 0%';
-                if (fileInput) fileInput.value = '';
-            }
-            
-            // Helper function to format file size
-            function formatFileSize(bytes) {
-                if (bytes === 0) return '0 Bytes';
-                
-                const k = 1024;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            }
-
-            // Add a function to load and display analysis for a document
-            function loadAnalysisForDocument(fileId) {
-                console.log(`Loading analysis for document ID: ${fileId}`);
-                
-                // Show loading state in the analysis results section
-                analysisResults.style.display = 'block';
-                analysisResults.innerHTML = '<div class="loading-spinner">Loading analysis...</div>';
-                analysisResults.scrollIntoView({ behavior: 'smooth' });
-                
-                // Fetch the analysis from the API
-                fetch(`/api/analysis?id=${fileId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`Error retrieving analysis: ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(response => {
-                        console.log('Analysis retrieved:', response);
-                        
-                        if (!response.success) {
-                            throw new Error(response.message || 'Failed to retrieve analysis');
-                        }
-                        
-                        const analysisData = response.data;
-                        
-                        // Restore the original structure of the analysis results section
-                        analysisResults.innerHTML = `
-                            <div class="analysis-header">
-                                <h2>Analysis Results</h2>
-                                <span class="analysis-time">Analyzed on ${new Date(analysisData.timestamp).toLocaleString()}</span>
-                            </div>
-                            
-                            <div class="file-info">
-                                Analyzed: <span id="file-name">${analysisData.fileName}</span>
-                                <div style="margin-top: 5px; font-size: 0.8rem; color: #666;">
-                                    Storage: <span>MinIO Cloud Storage</span>
-                                </div>
-                            </div>
-                            
-                            <h3>Document Summary</h3>
-                            <div id="document-summary" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.5;"></div>
-                            
-                            <h3>Key Insights</h3>
-                            <div id="insights-container"></div>
-                            
-                            <h3>Metrics</h3>
-                            <div id="metrics-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin: 25px 0;"></div>
-                            
-                            <div id="topics-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0;"></div>
-                            
-                            <div class="recommendations" style="background-color: #f9f9f9; border-left: 4px solid #0078ff; padding: 15px; margin: 20px 0;">
-                                <h3>Recommendations</h3>
-                                <ul id="recommendations-list"></ul>
-                            </div>
-                        `;
-                        
-                        // Update document summary
-                        const summaryContainer = document.getElementById('document-summary');
-                        if (analysisData.analysis.summary) {
-                            summaryContainer.textContent = analysisData.analysis.summary;
-                        } else {
-                            summaryContainer.textContent = 'No summary available for this document.';
-                        }
-                        
-                        // Update insights
-                        const insightsContainer = document.getElementById('insights-container');
-                        insightsContainer.innerHTML = '';
-                        
-                        analysisData.analysis.keyInsights.forEach(insight => {
-                            const insightElement = document.createElement('div');
-                            insightElement.style.cssText = 'background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 10px;';
-                            insightElement.textContent = insight;
-                            insightsContainer.appendChild(insightElement);
-                        });
-                        
-                        // Update metrics
-                        const metricsContainer = document.getElementById('metrics-container');
-                        metricsContainer.innerHTML = '';
-                        
-                        // Add sentiment metric
-                        addMetric(metricsContainer, analysisData.analysis.metrics.sentiment * 100, 'Sentiment', '%');
-                        
-                        // Add confidence metric
-                        addMetric(metricsContainer, analysisData.analysis.metrics.confidence * 100, 'Confidence', '%');
-                        
-                        // Update topics
-                        const topicsContainer = document.getElementById('topics-container');
-                        topicsContainer.innerHTML = '';
-                        
-                        analysisData.analysis.metrics.topics.forEach(topic => {
-                            const topicElement = document.createElement('div');
-                            topicElement.style.cssText = 'background-color: #e0efff; color: #0078ff; padding: 5px 10px; border-radius: 20px; font-size: 0.85rem;';
-                            topicElement.textContent = topic;
-                            topicsContainer.appendChild(topicElement);
-                        });
-                        
-                        // Update recommendations
-                        const recommendationsList = document.getElementById('recommendations-list');
-                        recommendationsList.innerHTML = '';
-                        
-                        analysisData.analysis.recommendations.forEach(recommendation => {
-                            const li = document.createElement('li');
-                            li.textContent = recommendation;
-                            li.style.marginBottom = '8px';
-                            recommendationsList.appendChild(li);
-                        });
-                    })
-                    .catch(error => {
-                        console.error('Error loading analysis:', error);
-                        analysisResults.innerHTML = `
-                            <div class="analysis-header">
-                                <h2>Analysis Results</h2>
-                            </div>
-                            <div class="empty-message">
-                                <p>Error loading analysis: ${error.message}</p>
-                                <p>Please try again later.</p>
-                            </div>
-                        `;
-                    });
-            }
-
-            // Function to display the list of documents (limit to 5)
-            function displayDocumentsList(documents) {
-                console.log('Displaying documents list:', documents);
-                
-                if (documents.length === 0) {
-                    documentsContainer.innerHTML = '<div class="empty-message">No documents found. Upload a document to get started.</div>';
-                    return;
-                }
-                
-                // Store total documents count for our message
-                const totalDocuments = documents.length;
-                
-                // Limit to only the 5 latest documents
-                const documentsToShow = documents.slice(0, 5);
-                
-                const documentsList = document.createElement('ul');
-                documentsList.className = 'report-list';
-                
-                // Add a message if we're displaying a limited set
-                if (totalDocuments > 5) {
-                    const messageItem = document.createElement('div');
-                    messageItem.className = 'documents-message';
-                    messageItem.innerHTML = `
-                        <div style="background-color: #f0f7ff; border-radius: 5px; padding: 10px 15px; margin-bottom: 15px; font-size: 0.9rem; color: #333;">
-                            Showing the latest 5 of ${totalDocuments} documents. 
-                            <a href="#" class="view-all-link" style="color: #0078ff; text-decoration: none; font-weight: 500;">
-                                View all reports <i class="fas fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    `;
-                    
-                    // Add click handler for the "View all reports" link
-                    messageItem.querySelector('.view-all-link').addEventListener('click', function(e) {
-                        e.preventDefault();
-                        // Navigate to All Reports view
-                        document.querySelector('.sidebar-menu li:nth-child(2) a').click();
-                    });
-                    
-                    documentsList.appendChild(messageItem);
-                }
-                
-                documentsToShow.forEach(doc => {
                     // Determine icon based on file type
                     let iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>';
                     
