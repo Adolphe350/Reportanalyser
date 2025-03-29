@@ -1,5 +1,8 @@
 FROM node:18-alpine
 
+# Install busybox for troubleshooting
+RUN apk add --no-cache busybox-extras
+
 # Create app directory outside of /app to avoid Coolify's volume mount
 WORKDIR /simple-app
 
@@ -11,12 +14,22 @@ COPY ./server.js ./server.js
 RUN echo "Files in working directory:" && ls -la && \
     echo "Files in public directory:" && ls -la public
 
-# Set environment variables  
+# Create a healthcheck script
+RUN echo '#!/bin/sh' > healthcheck.sh && \
+    echo 'wget -q -O- http://localhost:9000/health || exit 1' >> healthcheck.sh && \
+    chmod +x healthcheck.sh
+
+# Set environment variables
 ENV PORT=9000
 ENV NODE_ENV=production
+# Set Node.js to use maximum old space size to prevent memory issues
+ENV NODE_OPTIONS="--max-old-space-size=128 --expose-gc"
 
 # Expose the port
 EXPOSE 9000
 
-# Start the server with increased diagnostic output
-CMD ["node", "--trace-warnings", "server.js"] 
+# Set up healthcheck
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 CMD ./healthcheck.sh
+
+# Start the server with optimized settings
+CMD ["node", "--trace-warnings", "--unhandled-rejections=strict", "server.js"] 
