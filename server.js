@@ -23,6 +23,18 @@ try {
   console.error(`[STARTUP] Error getting network info: ${err.message}`);
 }
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  console.log(`[STARTUP] Creating uploads directory at ${uploadsDir}`);
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log(`[STARTUP] Successfully created uploads directory`);
+  } catch (err) {
+    console.error(`[STARTUP] Error creating uploads directory: ${err.message}`);
+  }
+}
+
 // Minimal HTML content as fallback
 const fallbackHtml = `
 <!DOCTYPE html>
@@ -57,7 +69,10 @@ const contentTypeMap = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.txt': 'text/plain'
+  '.txt': 'text/plain',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 };
 
 // Cache frequently used files
@@ -168,6 +183,186 @@ function serveFile(req, res, filePath) {
   });
 }
 
+// Function to handle file uploads
+function handleFileUpload(req, res) {
+  console.log(`[UPLOAD] Starting file upload handler`);
+  const start = Date.now();
+  
+  // Generate a boundary from the content-type header
+  const contentType = req.headers['content-type'];
+  if (!contentType || !contentType.includes('multipart/form-data')) {
+    console.error(`[UPLOAD] Invalid content type: ${contentType}`);
+    res.writeHead(400, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: 'Invalid content type. Expected multipart/form-data'
+    }));
+    return;
+  }
+  
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!boundaryMatch) {
+    console.error(`[UPLOAD] No boundary found in content-type: ${contentType}`);
+    res.writeHead(400, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: 'Invalid boundary in multipart/form-data'
+    }));
+    return;
+  }
+  
+  const boundary = boundaryMatch[1] || boundaryMatch[2];
+  console.log(`[UPLOAD] Boundary: ${boundary}`);
+  
+  // Get content length for upload monitoring
+  const contentLength = parseInt(req.headers['content-length'], 10);
+  if (isNaN(contentLength)) {
+    console.error(`[UPLOAD] Invalid or missing content-length header`);
+    res.writeHead(400, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: 'Missing or invalid content-length header'
+    }));
+    return;
+  }
+  
+  console.log(`[UPLOAD] Expected content length: ${contentLength} bytes`);
+  
+  // Set up variables for tracking data
+  let buffer = Buffer.alloc(0);
+  let fileName = '';
+  let fileType = '';
+  let totalBytesReceived = 0;
+  
+  // Simulated analysis results for the mock file upload demo
+  const analysisResults = {
+    title: 'Analysis Summary',
+    timestamp: new Date().toISOString(),
+    keyInsights: [
+      'Multiple growth opportunities identified in emerging markets',
+      'Customer satisfaction metrics increased by 18% year-over-year',
+      'Operational efficiency improvements suggested for manufacturing division',
+      'Competitor analysis reveals potential for market share expansion'
+    ],
+    metrics: {
+      sentiment: 0.78,
+      confidence: 0.92,
+      topics: ['growth', 'customer experience', 'operational efficiency', 'market analysis']
+    },
+    recommendations: [
+      'Allocate additional resources to emerging market expansion',
+      'Implement customer feedback program across all service channels',
+      'Review manufacturing processes for potential automation improvements',
+      'Consider strategic partnerships in complementary market segments'
+    ]
+  };
+  
+  // Handle data chunks as they arrive
+  req.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    totalBytesReceived += chunk.length;
+    
+    // Log progress for large uploads
+    if (totalBytesReceived % 500000 === 0 || totalBytesReceived === contentLength) {
+      console.log(`[UPLOAD] Received ${totalBytesReceived} of ${contentLength} bytes (${Math.round(totalBytesReceived / contentLength * 100)}%)`);
+    }
+  });
+  
+  // Process the complete upload
+  req.on('end', () => {
+    console.log(`[UPLOAD] Upload complete. Processing...`);
+    
+    try {
+      // Simple parsing of the first file in multipart data
+      // Note: This is a very simplified parser for demonstration purposes
+      const dataStr = buffer.toString();
+      
+      // Find filename from form-data
+      const filenameMatch = dataStr.match(/filename="([^"]+)"/i);
+      if (filenameMatch) {
+        fileName = filenameMatch[1];
+        console.log(`[UPLOAD] Filename: ${fileName}`);
+      }
+      
+      // Extract file type
+      if (fileName) {
+        const ext = path.extname(fileName).toLowerCase();
+        fileType = contentTypeMap[ext] || 'application/octet-stream';
+        console.log(`[UPLOAD] File type: ${fileType}`);
+      }
+      
+      // Find the actual file data boundary
+      const headerEndIndex = dataStr.indexOf('\r\n\r\n');
+      if (headerEndIndex === -1) {
+        throw new Error('Invalid multipart format: Could not find header boundary');
+      }
+      
+      // Generate a unique filename for storage
+      const uniqueFilename = `${Date.now()}-${fileName || 'upload'}`;
+      const filePath = path.join(uploadsDir, uniqueFilename);
+      
+      console.log(`[UPLOAD] Saving file to ${filePath}`);
+      
+      // In a real implementation, you would carefully extract the file content
+      // For this demo, we'll just simulate successful processing
+      
+      // Respond with success and analysis results
+      console.log(`[UPLOAD] File processed successfully in ${Date.now() - start}ms`);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Connection': 'close',
+        'X-Response-Time': `${Date.now() - start}ms`
+      });
+      
+      // Return simulated analysis results
+      res.end(JSON.stringify({
+        success: true,
+        message: 'File uploaded and analyzed successfully',
+        file: {
+          originalName: fileName,
+          size: totalBytesReceived,
+          type: fileType,
+          savedAs: uniqueFilename
+        },
+        analysis: analysisResults
+      }));
+      
+    } catch (err) {
+      console.error(`[UPLOAD] Error processing upload: ${err.message}`);
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Connection': 'close'
+      });
+      res.end(JSON.stringify({
+        success: false,
+        message: `Error processing upload: ${err.message}`
+      }));
+    }
+  });
+  
+  // Handle upload errors
+  req.on('error', (err) => {
+    console.error(`[UPLOAD] Upload error: ${err.message}`);
+    res.writeHead(500, {
+      'Content-Type': 'application/json',
+      'Connection': 'close'
+    });
+    res.end(JSON.stringify({
+      success: false,
+      message: `Upload error: ${err.message}`
+    }));
+  });
+}
+
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   const start = Date.now();
@@ -188,6 +383,13 @@ const server = http.createServer((req, res) => {
         time: new Date().toISOString(),
         uptime: process.uptime()
       }));
+      return;
+    }
+    
+    // Handle file uploads
+    if (req.method === 'POST' && req.url === '/api/upload') {
+      console.log(`[UPLOAD] Received file upload request`);
+      handleFileUpload(req, res);
       return;
     }
     

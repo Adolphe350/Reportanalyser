@@ -151,9 +151,15 @@
             transition: border-color 0.3s, background-color 0.3s;
         }
         
-        .upload-area:hover {
+        .upload-area:hover, .upload-area.drag-over {
             border-color: #0078ff;
             background-color: #f0f7ff;
+        }
+        
+        .upload-area.uploading {
+            border-color: #0078ff;
+            background-color: #e0efff;
+            pointer-events: none;
         }
         
         .upload-icon {
@@ -304,6 +310,152 @@
             color: #333;
             font-weight: bold;
         }
+        
+        /* ADDED: Analysis Results Section */
+        .analysis-results {
+            display: none;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .analysis-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .analysis-header h2 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .analysis-time {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .insight-list {
+            margin: 20px 0;
+        }
+        
+        .insight-item {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 25px 0;
+        }
+        
+        .metric-card {
+            flex: 1;
+            min-width: 120px;
+            background-color: #f0f7ff;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #0078ff;
+            margin: 5px 0;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .recommendations {
+            background-color: #f9f9f9;
+            border-left: 4px solid #0078ff;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .recommendations h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .recommendations ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+        }
+        
+        .recommendations li {
+            margin-bottom: 8px;
+        }
+        
+        .progress-container {
+            display: none;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .progress-bar {
+            height: 6px;
+            background-color: #e0e0e0;
+            border-radius: 3px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #0078ff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        .file-info {
+            background-color: #f0f7ff;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .file-info span {
+            font-weight: 500;
+        }
+
+        .hidden {
+            display: none;
+        }
+        
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 15px 0;
+        }
+        
+        .tag {
+            background-color: #e0efff;
+            color: #0078ff;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
@@ -414,7 +566,39 @@
                     <div class="upload-text">
                         <h3>Upload Report</h3>
                         <p>Drag and drop your PDF, DOCX, or TXT files here, or click to browse</p>
-                        <button class="btn">Select File</button>
+                        <button class="btn" id="upload-button">Select File</button>
+                        <input type="file" id="file-input" accept=".pdf,.doc,.docx,.txt" style="display: none;">
+                    </div>
+                    <div class="progress-container" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="progress-text">Uploading... 0%</div>
+                    </div>
+                </div>
+                
+                <!-- Analysis Results Section (Initially Hidden) -->
+                <div class="analysis-results" style="display: none; background-color: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05); padding: 30px; margin-bottom: 30px;">
+                    <div class="analysis-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                        <h2>Analysis Results</h2>
+                        <span class="analysis-time" style="font-size: 0.85rem; color: #888;">Analyzed just now</span>
+                    </div>
+                    
+                    <div class="file-info" style="background-color: #f0f7ff; border-radius: 5px; padding: 10px 15px; margin-top: 15px; font-size: 0.9rem;">
+                        Analyzed: <span id="file-name">report.pdf</span> (<span id="file-size">1.2 MB</span>)
+                    </div>
+                    
+                    <h3>Key Insights</h3>
+                    <div id="insights-container"></div>
+                    
+                    <h3>Metrics</h3>
+                    <div id="metrics-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin: 25px 0;"></div>
+                    
+                    <div id="topics-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0;"></div>
+                    
+                    <div class="recommendations" style="background-color: #f9f9f9; border-left: 4px solid #0078ff; padding: 15px; margin: 20px 0;">
+                        <h3>Recommendations</h3>
+                        <ul id="recommendations-list"></ul>
                     </div>
                 </div>
                 
@@ -506,12 +690,211 @@
         document.addEventListener("DOMContentLoaded", function() {
             console.log("Dashboard loaded successfully");
             
-            // Add click handler for the upload area
             const uploadArea = document.querySelector('.upload-area');
-            if (uploadArea) {
-                uploadArea.addEventListener('click', function() {
-                    alert('File upload functionality would open a file dialog in a real application.');
+            const fileInput = document.getElementById('file-input');
+            const uploadButton = document.getElementById('upload-button');
+            const progressContainer = document.querySelector('.progress-container');
+            const progressFill = document.querySelector('.progress-fill');
+            const progressText = document.querySelector('.progress-text');
+            const analysisResults = document.querySelector('.analysis-results');
+            
+            // Upload button click handler
+            if (uploadButton) {
+                uploadButton.addEventListener('click', function() {
+                    fileInput.click();
                 });
+            }
+            
+            // File input change handler
+            if (fileInput) {
+                fileInput.addEventListener('change', function() {
+                    if (this.files && this.files[0]) {
+                        handleFileUpload(this.files[0]);
+                    }
+                });
+            }
+            
+            // Drag and drop handlers
+            if (uploadArea) {
+                uploadArea.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    this.style.borderColor = '#0078ff';
+                    this.style.backgroundColor = '#f0f7ff';
+                });
+                
+                uploadArea.addEventListener('dragleave', function() {
+                    this.style.borderColor = '';
+                    this.style.backgroundColor = '';
+                });
+                
+                uploadArea.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    this.style.borderColor = '';
+                    this.style.backgroundColor = '';
+                    
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleFileUpload(e.dataTransfer.files[0]);
+                    }
+                });
+            }
+            
+            // Function to handle file upload
+            function handleFileUpload(file) {
+                // Display file info
+                console.log(`Uploading file: ${file.name} (${formatFileSize(file.size)})`);
+                
+                // Update UI for upload
+                if (uploadArea) uploadArea.classList.add('uploading');
+                if (progressContainer) progressContainer.style.display = 'block';
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Create and configure XMLHttpRequest
+                const xhr = new XMLHttpRequest();
+                
+                // Upload progress handler
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressFill.style.width = percentComplete + '%';
+                        progressText.textContent = `Uploading... ${percentComplete}%`;
+                    }
+                });
+                
+                // Upload complete handler
+                xhr.addEventListener('load', function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        progressText.textContent = 'Processing file...';
+                        
+                        // Simulate analysis delay
+                        setTimeout(function() {
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                displayAnalysisResults(response, file);
+                            } catch (error) {
+                                console.error('Error parsing response:', error);
+                                alert('There was an error analyzing the file. Please try again.');
+                                resetUploadArea();
+                            }
+                        }, 1500);
+                    } else {
+                        console.error('Upload failed:', xhr.statusText);
+                        alert('Upload failed. Please try again.');
+                        resetUploadArea();
+                    }
+                });
+                
+                // Error handler
+                xhr.addEventListener('error', function() {
+                    console.error('Upload request failed');
+                    alert('Upload failed. Please check your connection and try again.');
+                    resetUploadArea();
+                });
+                
+                // Open and send the request
+                xhr.open('POST', '/api/upload', true);
+                xhr.send(formData);
+            }
+            
+            // Function to display analysis results
+            function displayAnalysisResults(response, file) {
+                console.log('Analysis complete:', response);
+                
+                // Reset upload area
+                resetUploadArea();
+                
+                // Show analysis results section
+                analysisResults.style.display = 'block';
+                
+                // Update file info
+                document.getElementById('file-name').textContent = file.name;
+                document.getElementById('file-size').textContent = formatFileSize(file.size);
+                
+                // Update insights
+                const insightsContainer = document.getElementById('insights-container');
+                insightsContainer.innerHTML = '';
+                
+                response.analysis.keyInsights.forEach(insight => {
+                    const insightElement = document.createElement('div');
+                    insightElement.style.cssText = 'background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 10px;';
+                    insightElement.textContent = insight;
+                    insightsContainer.appendChild(insightElement);
+                });
+                
+                // Update metrics
+                const metricsContainer = document.getElementById('metrics-container');
+                metricsContainer.innerHTML = '';
+                
+                // Add sentiment metric
+                addMetric(metricsContainer, response.analysis.metrics.sentiment * 100, 'Sentiment', '%');
+                
+                // Add confidence metric
+                addMetric(metricsContainer, response.analysis.metrics.confidence * 100, 'Confidence', '%');
+                
+                // Update topics
+                const topicsContainer = document.getElementById('topics-container');
+                topicsContainer.innerHTML = '';
+                
+                response.analysis.metrics.topics.forEach(topic => {
+                    const topicElement = document.createElement('div');
+                    topicElement.style.cssText = 'background-color: #e0efff; color: #0078ff; padding: 5px 10px; border-radius: 20px; font-size: 0.85rem;';
+                    topicElement.textContent = topic;
+                    topicsContainer.appendChild(topicElement);
+                });
+                
+                // Update recommendations
+                const recommendationsList = document.getElementById('recommendations-list');
+                recommendationsList.innerHTML = '';
+                
+                response.analysis.recommendations.forEach(recommendation => {
+                    const li = document.createElement('li');
+                    li.textContent = recommendation;
+                    li.style.marginBottom = '8px';
+                    recommendationsList.appendChild(li);
+                });
+                
+                // Scroll to results
+                analysisResults.scrollIntoView({ behavior: 'smooth' });
+            }
+            
+            // Helper function to add a metric card
+            function addMetric(container, value, label, unit = '') {
+                const metricCard = document.createElement('div');
+                metricCard.style.cssText = 'flex: 1; min-width: 120px; background-color: #f0f7ff; border-radius: 8px; padding: 15px; text-align: center;';
+                
+                const metricValue = document.createElement('div');
+                metricValue.style.cssText = 'font-size: 1.8rem; font-weight: bold; color: #0078ff; margin: 5px 0;';
+                metricValue.textContent = Math.round(value) + unit;
+                
+                const metricLabel = document.createElement('div');
+                metricLabel.style.cssText = 'color: #666; font-size: 0.9rem;';
+                metricLabel.textContent = label;
+                
+                metricCard.appendChild(metricValue);
+                metricCard.appendChild(metricLabel);
+                container.appendChild(metricCard);
+            }
+            
+            // Function to reset the upload area
+            function resetUploadArea() {
+                if (uploadArea) uploadArea.classList.remove('uploading');
+                if (progressContainer) progressContainer.style.display = 'none';
+                if (progressFill) progressFill.style.width = '0%';
+                if (progressText) progressText.textContent = 'Uploading... 0%';
+                if (fileInput) fileInput.value = '';
+            }
+            
+            // Helper function to format file size
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
             }
         });
     </script>
