@@ -1309,6 +1309,119 @@
                 }
             }
             
+            // Function to display only the 5 latest documents on the dashboard
+            function displayDocumentsList(documents) {
+                console.log('Displaying recent documents list:', documents);
+                
+                if (documents.length === 0) {
+                    documentsContainer.innerHTML = '<div class="empty-message">No documents found. Upload a document to get started.</div>';
+                    return;
+                }
+                
+                // Store the total count of documents
+                const totalCount = documents.length;
+                
+                // Sort documents by upload date (newest first)
+                const sortedDocuments = [...documents].sort((a, b) => {
+                    const dateA = a.lastModified ? new Date(a.lastModified) : new Date(0);
+                    const dateB = b.lastModified ? new Date(b.lastModified) : new Date(0);
+                    return dateB - dateA;
+                });
+                
+                // Only show the 5 latest documents
+                const recentDocuments = sortedDocuments.slice(0, 5);
+                
+                const documentsList = document.createElement('ul');
+                documentsList.className = 'report-list';
+                
+                // Add a message when we have more than 5 documents
+                if (totalCount > 5) {
+                    const messageItem = document.createElement('div');
+                    messageItem.className = 'documents-message';
+                    messageItem.innerHTML = `
+                        <div style="background-color: #f0f7ff; border-radius: 5px; padding: 10px 15px; margin-bottom: 15px; font-size: 0.9rem; color: #333;">
+                            Showing 5 most recent documents of ${totalCount} total.
+                            <a href="#" class="view-all-link" style="color: #0078ff; text-decoration: none; font-weight: 500; margin-left: 10px;">
+                                View all reports <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
+                    `;
+                    
+                    // Add click handler for the "View all reports" link
+                    messageItem.querySelector('.view-all-link').addEventListener('click', function(e) {
+                        e.preventDefault();
+                        // Click the All Reports sidebar link
+                        document.querySelector('.sidebar-menu li:nth-child(2) a').click();
+                    });
+                    
+                    documentsList.appendChild(messageItem);
+                }
+                
+                recentDocuments.forEach(doc => {
+                    // Determine icon based on file type
+                    let iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"></path>';
+                    
+                    if (doc.name) {
+                        const extension = doc.name.split('.').pop().toLowerCase();
+                        if (['pdf'].includes(extension)) {
+                            iconPath = '<path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"></path>';
+                        } else if (['doc', 'docx'].includes(extension)) {
+                            iconPath = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8 4h1v5H8V4zm3 0h1v5h-1V4zm3 0h1v5h-1V4zm-6 6h8v1H8v-1zm0 2h8v1H8v-1zm0 2h8v1H8v-1z"></path>';
+                        }
+                    }
+                    
+                    // Format the date
+                    const date = doc.lastModified ? new Date(doc.lastModified) : new Date();
+                    const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    
+                    // Create list item
+                    const documentItem = document.createElement('li');
+                    documentItem.className = 'report-item';
+                    
+                    // Analysis badge if available
+                    const analysisBadge = doc.hasAnalysis 
+                        ? '<span class="report-status">Analyzed</span>'
+                        : '<span class="report-status pending">No Analysis</span>';
+                    
+                    documentItem.innerHTML = `
+                        <div class="report-info">
+                            <div class="report-icon">
+                                <svg fill="#0078ff" viewBox="0 0 24 24">
+                                    ${iconPath}
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="report-name">${doc.name || 'Unnamed document'}</div>
+                                <div class="report-date">Uploaded ${formattedDate}</div>
+                                <div class="report-actions" style="margin-top: 5px;">
+                                    <a href="${doc.url}" target="_blank" class="document-link" title="Download document" style="color: #0078ff; font-size: 0.85rem; margin-right: 15px;">
+                                        <i class="fas fa-download"></i> Download
+                                    </a>
+                                    ${doc.hasAnalysis ? `<a href="#" class="view-analysis-link" data-id="${doc.objectName}" title="View analysis" style="color: #0078ff; font-size: 0.85rem;">
+                                        <i class="fas fa-chart-line"></i> View Analysis
+                                    </a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        ${analysisBadge}
+                    `;
+                    
+                    // Add event listener for "View Analysis" link
+                    if (doc.hasAnalysis) {
+                        const viewAnalysisLink = documentItem.querySelector('.view-analysis-link');
+                        viewAnalysisLink.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            loadAnalysisForDocument(doc.objectName);
+                        });
+                    }
+                    
+                    documentsList.appendChild(documentItem);
+                });
+                
+                documentsContainer.innerHTML = '';
+                documentsContainer.appendChild(documentsList);
+            }
+            
             // Function to display all documents without limit
             function displayAllDocumentsList(documents) {
                 console.log('Displaying all documents list:', documents);
