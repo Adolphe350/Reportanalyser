@@ -1520,6 +1520,12 @@ async function handleGetAnalysis(req, res) {
       return;
     }
     
+    // Add detailed logging of the analysis data structure
+    console.log(`[API] Analysis data structure: ${Object.keys(analysisData).join(', ')}`);
+    if (analysisData.analysis) {
+      console.log(`[API] Analysis nested structure: ${Object.keys(analysisData.analysis).join(', ')}`);
+    }
+    
     // Return the analysis data
     res.writeHead(200, {
       'Content-Type': 'application/json',

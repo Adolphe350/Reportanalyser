@@ -1236,60 +1236,85 @@
                             throw new Error(response.message || 'Failed to load analysis');
                         }
                         
-                        const data = response.data;
-                        console.log('Analysis retrieved:', data);
-                        
-                        // Display summary
-                        documentSummary.innerHTML = data.summary || 'No summary available';
-                        
-                        // Display insights
-                        if (data.insights && data.insights.length > 0) {
-                            const insightsList = document.createElement('ul');
-                            insightsList.className = 'insight-list';
+                        try {
+                            const data = response.data;
+                            console.log('Analysis retrieved:', data);
+                            console.log('Analysis structure:', Object.keys(data));
                             
-                            data.insights.forEach(insight => {
-                                const insightItem = document.createElement('li');
-                                insightItem.className = 'insight-item';
-                                insightItem.textContent = insight;
-                                insightsList.appendChild(insightItem);
-                            });
+                            // Access the actual analysis data which is inside the 'analysis' property
+                            const analysisData = data.analysis || data;
+                            console.log('Analysis data to display:', analysisData);
                             
-                            insightsContainer.innerHTML = '';
-                            insightsContainer.appendChild(insightsList);
-                        } else {
-                            insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
-                        }
-                        
-                        // Display metrics if available
-                        if (data.metrics && Object.keys(data.metrics).length > 0) {
-                            metricsContainer.innerHTML = '';
+                            // Display summary
+                            documentSummary.innerHTML = analysisData.summary || data.summary || 'No summary available';
                             
-                            for (const [key, value] of Object.entries(data.metrics)) {
-                                const metricCard = document.createElement('div');
-                                metricCard.className = 'metric-card';
+                            // Display insights from the correct location
+                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || [];
+                            if (insights && insights.length > 0) {
+                                const insightsList = document.createElement('ul');
+                                insightsList.className = 'insight-list';
                                 
-                                metricCard.innerHTML = `
-                                    <div class="metric-value">${value}</div>
-                                    <div class="metric-label">${key}</div>
-                                `;
+                                insights.forEach(insight => {
+                                    const insightItem = document.createElement('li');
+                                    insightItem.className = 'insight-item';
+                                    insightItem.textContent = insight;
+                                    insightsList.appendChild(insightItem);
+                                });
                                 
-                                metricsContainer.appendChild(metricCard);
+                                insightsContainer.innerHTML = '';
+                                insightsContainer.appendChild(insightsList);
+                            } else {
+                                insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
                             }
-                        } else {
-                            metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
-                        }
-                        
-                        // Display recommendations
-                        if (data.recommendations && data.recommendations.length > 0) {
-                            recommendationsList.innerHTML = '';
                             
-                            data.recommendations.forEach(recommendation => {
-                                const recommendationItem = document.createElement('li');
-                                recommendationItem.textContent = recommendation;
-                                recommendationsList.appendChild(recommendationItem);
-                            });
-                        } else {
-                            recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                            // Display metrics if available from the correct location
+                            const metrics = analysisData.metrics || data.metrics || {};
+                            if (metrics && Object.keys(metrics).length > 0) {
+                                metricsContainer.innerHTML = '';
+                                
+                                for (const [key, value] of Object.entries(metrics)) {
+                                    const metricCard = document.createElement('div');
+                                    metricCard.className = 'metric-card';
+                                    
+                                    metricCard.innerHTML = `
+                                        <div class="metric-value">${value}</div>
+                                        <div class="metric-label">${key}</div>
+                                    `;
+                                    
+                                    metricsContainer.appendChild(metricCard);
+                                }
+                            } else {
+                                metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                            }
+                            
+                            // Display recommendations from the correct location
+                            const recommendations = analysisData.recommendations || data.recommendations || [];
+                            if (recommendations && recommendations.length > 0) {
+                                recommendationsList.innerHTML = '';
+                                
+                                recommendations.forEach(recommendation => {
+                                    const recommendationItem = document.createElement('li');
+                                    recommendationItem.textContent = recommendation;
+                                    recommendationsList.appendChild(recommendationItem);
+                                });
+                            } else {
+                                recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                            }
+                            
+                            // Display raw data as a fallback if no structured data was found
+                            if (!analysisData.summary && !insights.length && !Object.keys(metrics).length && !recommendations.length) {
+                                console.warn('No structured analysis data found, displaying raw data');
+                                documentSummary.innerHTML = '<strong>Document Analysis:</strong><br><br>' + 
+                                    '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
+                                    JSON.stringify(data, null, 2) + 
+                                    '</pre>';
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing analysis data:', parseError);
+                            documentSummary.innerHTML = `<div class="error-message">Error parsing analysis data: ${parseError.message}</div>`;
+                            insightsContainer.innerHTML = '';
+                            metricsContainer.innerHTML = '';
+                            recommendationsList.innerHTML = '';
                         }
                         
                         // Scroll to analysis results
