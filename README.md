@@ -10,6 +10,7 @@ An application that uses Gemini AI to analyze uploaded reports and documents, ex
 - Document analysis using Google's Gemini AI
 - Interactive dashboard displaying analysis results
 - Responsive design for all device sizes
+- Analytics tracking for monitoring user interactions
 
 ## Setup for Gemini AI Integration
 
@@ -68,6 +69,8 @@ If the Gemini API key is not available or there's an error in the API call, the 
 ## Technical Implementation
 
 The integration uses the `@google/generative-ai` npm package to communicate with the Gemini API. The document text is sent to the API with a structured prompt that asks for specific analysis components. The response is then parsed and formatted for display in the dashboard UI.
+
+The application also includes analytics tracking (using a custom analytics service) to monitor user interactions and usage patterns.
 
 ## Customizing the Analysis
 
