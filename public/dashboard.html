@@ -6,14 +6,16 @@
     <title>Dashboard - AI Report Analyzer</title>
     <!-- Analytics script with proxy configuration -->
     <script>
+        // Initialize analytics configuration before loading the script
         window.analyticsConfig = {
             projectId: '24d98536-a1e2-462b-ba2e-d6c192c79096',
             pixelEndpoint: '/api/pixel',
             retryAttempts: 3,
             debug: true
         };
+        console.log('Analytics config initialized:', window.analyticsConfig);
     </script>
-    <script src="/api/proxy/analytics.js"></script>
+    <script async src="/api/proxy/analytics.js" onload="console.log('Analytics script loaded')"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         /* Reset and base styles */

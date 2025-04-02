@@ -4,6 +4,14 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.14] - 2024-04-02
+
+### Fixed
+- Fixed "Missing project ID" error in analytics initialization
+- Added proper analytics script loading sequence
+- Added debug logging for analytics configuration
+- Improved analytics script loading with async attribute
+
 ## [1.0.13] - 2024-04-02
 
 ### Added
