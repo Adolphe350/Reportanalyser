@@ -244,6 +244,7 @@ async function uploadFileToMinIO(fileBuffer, fileName, contentType) {
 }
 
 const port = process.env.PORT || 9000;
+const host = process.env.HOST || '0.0.0.0';  // Allow connections from any IP
 
 // Add Gemini API dependency
 // To install: npm install @google/generative-ai
@@ -1388,3 +1389,39 @@ async function handleListFiles(req, res) {
     }
   }
 }
+
+// Create HTTP server
+const server = http.createServer((req, res) => {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Handle file uploads
+  if (req.method === 'POST' && req.url === '/api/upload') {
+    handleFileUpload(req, res);
+    return;
+  }
+
+  // Handle file listing
+  if (req.method === 'GET' && req.url === '/api/files') {
+    handleListFiles(req, res);
+    return;
+  }
+
+  // Serve static files
+  serveFile(req, res, req.url);
+});
+
+// Start server
+server.listen(port, host, () => {
+  console.log(`[STARTUP] Server running at http://${host}:${port}/`);
+  console.log(`[STARTUP] Local access: http://localhost:${port}/`);
+});

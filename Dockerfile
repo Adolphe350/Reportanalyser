@@ -4,16 +4,14 @@ FROM node:18-alpine
 RUN apk add --no-cache busybox-extras curl net-tools netcat-openbsd iputils
 
 # Create app directory outside of /app to avoid Coolify's volume mount
-WORKDIR /simple-app
+WORKDIR /app
 
 # Copy package.json and install dependencies
-COPY package.json ./
+COPY package*.json ./
 RUN npm install
 
 # Copy source files from the repository with explicit file list for visibility
-COPY ./public ./public
-COPY ./server.js ./server.js
-COPY ./docker-compose.production.yml ./docker-compose.production.yml
+COPY . .
 
 # Log directory contents for debugging
 RUN echo "Files in working directory:" && ls -la && \
@@ -46,4 +44,4 @@ EXPOSE 9000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 CMD ./healthcheck.sh
 
 # Start the server with optimized settings and enable full debugging
-CMD ["node", "--trace-warnings", "--unhandled-rejections=strict", "server.js"] 
+CMD ["npm", "start"] 

@@ -4,6 +4,19 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.18] - 2024-04-02
+
+### Added
+- Dockerfile for Coolify deployment
+- .dockerignore file for optimized builds
+- Deployment instructions in README.md
+- Environment variables documentation
+
+### Changed
+- Updated server configuration for container deployment
+- Improved documentation with deployment steps
+- Enhanced environment variable handling
+
 ## [1.0.17] - 2024-04-02
 
 ### Fixed
