@@ -4,6 +4,22 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.13] - 2024-04-02
+
+### Added
+- Added `/api/pixel` endpoint for handling pixel tracking requests
+- Added proxy configuration for analytics script to improve cross-origin handling
+
+### Changed
+- Updated analytics script configuration to use proxy endpoint
+- Improved CORS headers for pixel tracking requests
+- Enhanced error handling for pixel tracking
+
+### Fixed
+- Fixed cross-origin issues with pixel tracking
+- Added fallback handling for failed pixel requests
+- Improved retry mechanism for tracking events
+
 ## [1.0.12] - 2024-04-02
 
 ### Fixed

@@ -98,16 +98,7 @@ try {
       port: minioPort,
       useSSL: minioUseSSL,
       accessKey: minioAccessKey,
-      secretKey: minioSecretKey,
-      // Add timeout settings
-      transport: {
-        agent: new http.Agent({
-          keepAlive: true,
-          keepAliveMsecs: 3000,
-          maxSockets: 10,
-          timeout: 120000 // 2 minutes
-        })
-      }
+      secretKey: minioSecretKey
     });
     
     console.log(`[STARTUP] MinIO client initialized successfully with endpoint ${minioClient.host}`);
@@ -391,80 +382,128 @@ try {
 async function analyzeDocumentWithGemini(text, fileName) {
   console.log(`[AI] Starting document analysis with Gemini for ${fileName}`);
   
-  // Add retry logic
-  const maxRetries = 3;
-  let retryCount = 0;
+  // Check if Gemini is available
+  if (!geminiAvailable || !geminiModel) {
+    console.log(`[AI] Gemini is not available, using simulation mode`);
+    console.log(`[AI] geminiAvailable: ${geminiAvailable}, geminiModel: ${geminiModel ? 'defined' : 'undefined'}`);
+    return getSimulatedAnalysisResults(fileName, text);
+  }
   
-  while (retryCount < maxRetries) {
+  try {
+    console.log(`[AI] Preparing to analyze document text (${text.length} chars)`);
+    
+    // Create a more detailed and effective prompt for the Gemini AI model
+    const prompt = `
+You are an expert document and report analyzer with expertise in multiple domains. I need you to thoroughly analyze the following document and provide a comprehensive assessment.
+
+Document name: "${fileName}"
+
+DOCUMENT TEXT TO ANALYZE:
+${text.substring(0, 15000)} 
+${text.length > 15000 ? '... (text truncated for size)' : ''}
+
+ANALYSIS INSTRUCTIONS:
+1. First determine if the document text appears to be readable content or if it appears to be binary/corrupted content. 
+   If it's binary/corrupted, indicate this in your summary and do your best with what you can interpret.
+
+2. Create a concise 1-2 paragraph summary of the document's main content and purpose.
+
+3. Extract 5-6 key insights from the document that represent the most important information.
+
+4. Identify the main themes, topics, and subject areas of the document.
+
+5. Assess the sentiment of the document (positive, negative, neutral) and provide a confidence score.
+
+6. Provide 3-5 specific, actionable recommendations based on the document content.
+
+7. Note any important metrics, data points, or statistics mentioned in the document.
+
+FORMAT YOUR RESPONSE AS STRUCTURED JSON with the following format:
+{
+  "summary": "1-2 paragraph summary of the document's content and purpose",
+  "keyInsights": [
+    "First key insight from the document",
+    "Second key insight from the document",
+    etc.
+  ],
+  "metrics": {
+    "sentiment": number between 0 and 1 representing sentiment score (higher is more positive),
+    "confidence": number between 0.7 and 1 representing confidence in analysis,
+    "topics": [
+      "First main topic/theme",
+      "Second main topic/theme",
+      etc.
+    ]
+  },
+  "recommendations": [
+    "First specific recommendation based on the document",
+    "Second specific recommendation based on the document",
+    etc.
+  ]
+}
+
+IMPORTANT: Return ONLY the JSON object as your response, nothing else. Do not include explanation text, formatting, or markdown.
+`;
+
+    console.log(`[AI] Creating Gemini request with prompt length: ${prompt.length}`);
+    console.log(`[AI] Sending request to Gemini AI`);
+    
+    // Make the API call with INCREASED timeout handling
+    const startTime = Date.now();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Gemini API request timed out after 60 seconds')), 60000)
+    );
+    
+    // Create the Gemini request
+    const geminiPromise = geminiModel.generateContent(prompt);
+    
+    // Wait for either the API response or timeout
+    console.log(`[AI] Waiting for Gemini response...`);
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
+    console.log(`[AI] Received initial response object from Gemini`);
+    
+    // Extract the text response with another timeout to prevent hanging on response processing
+    const responseTimeout = setTimeout(() => {
+      console.log(`[AI] Text extraction from response timed out`);
+      throw new Error('Timed out while extracting text from Gemini response');
+    }, 30000);
+    
+    const response = await result.response;
+    const responseText = response.text();
+    clearTimeout(responseTimeout);
+    
+    const endTime = Date.now();
+    console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
+    console.log(`[AI] Response text length: ${responseText.length} chars`);
+    console.log(`[AI] Response text (first 200 chars): ${responseText.substring(0, 200).replace(/\n/g, ' ')}...`);
+    
+    // Parse the response to extract the JSON
     try {
-      // Make the API call with INCREASED timeout handling
-      const startTime = Date.now();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gemini API request timed out after 90 seconds')), 90000)
-      );
-      
-      // Create the Gemini request
-      const geminiPromise = geminiModel.generateContent(prompt);
-      
-      // Wait for either the API response or timeout
-      console.log(`[AI] Waiting for Gemini response... (Attempt ${retryCount + 1}/${maxRetries})`);
-      const result = await Promise.race([geminiPromise, timeoutPromise]);
-      
-      console.log(`[AI] Received initial response object from Gemini`);
-      
-      // Extract the text response with another timeout to prevent hanging on response processing
-      const responseTimeout = setTimeout(() => {
-        console.log(`[AI] Text extraction from response timed out`);
-        throw new Error('Timed out while extracting text from Gemini response');
-      }, 30000);
-      
-      const response = await result.response;
-      const responseText = response.text();
-      clearTimeout(responseTimeout);
-      
-      const endTime = Date.now();
-      console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
-      console.log(`[AI] Response text length: ${responseText.length} chars`);
-      console.log(`[AI] Response text (first 200 chars): ${responseText.substring(0, 200).replace(/\n/g, ' ')}...`);
-      
-      // Parse the response to extract the JSON
-      try {
-        // Extract JSON object from the text response
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const jsonStr = jsonMatch[0];
-          console.log(`[AI] Extracted JSON from response (${jsonStr.length} chars)`);
-          
-          const analysis = JSON.parse(jsonStr);
-          console.log(`[AI] Successfully parsed JSON into analysis object`);
-          console.log(`[AI] Analysis contains ${analysis.keyInsights ? analysis.keyInsights.length : 0} insights and ${analysis.recommendations ? analysis.recommendations.length : 0} recommendations`);
-          
-          return analysis;
-        } else {
-          console.error(`[AI] Could not find JSON in response`);
-          console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
-          return getSimulatedAnalysisResults(fileName, text);
-        }
-      } catch (parseError) {
-        console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
+      // Extract JSON object from the text response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[0];
+        console.log(`[AI] Extracted JSON from response (${jsonStr.length} chars)`);
+        
+        const analysis = JSON.parse(jsonStr);
+        console.log(`[AI] Successfully parsed JSON into analysis object`);
+        console.log(`[AI] Analysis contains ${analysis.keyInsights ? analysis.keyInsights.length : 0} insights and ${analysis.recommendations ? analysis.recommendations.length : 0} recommendations`);
+        
+        return analysis;
+      } else {
+        console.error(`[AI] Could not find JSON in response`);
         console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
         return getSimulatedAnalysisResults(fileName, text);
       }
-    } catch (err) {
-      retryCount++;
-      console.error(`[AI] Error in Gemini analysis (Attempt ${retryCount}/${maxRetries}): ${err.message}`);
-      
-      if (retryCount < maxRetries) {
-        // Wait before retrying (exponential backoff)
-        const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-        console.log(`[AI] Waiting ${waitTime}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      
-      console.error(`[AI] All retry attempts failed. Falling back to simulated results.`);
+    } catch (parseError) {
+      console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
+      console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
       return getSimulatedAnalysisResults(fileName, text);
     }
+  } catch (err) {
+    console.error(`[AI] Error in Gemini analysis: ${err.message}`);
+    console.error(`[AI] Error stack: ${err.stack}`);
+    return getSimulatedAnalysisResults(fileName, text);
   }
 }
 
@@ -1761,101 +1800,34 @@ async function proxyAnalyticsScript(req, res) {
   // Target URL for the analytics script
   const targetUrl = 'https://analytics.api.app.kimuse.rw/tracking/script.min.js';
   
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-  
-  try {
-    // Make a request to the target URL with proper error handling
-    const request = https.get(targetUrl, {
-      timeout: 5000, // 5 second timeout
-      headers: {
-        'User-Agent': 'AI-Report-Analyzer/1.0',
-        'Accept': '*/*'
-      }
-    });
-    
-    request.on('response', (proxyRes) => {
-      // Set response headers
-      res.writeHead(200, {
-        'Content-Type': 'application/javascript',
-        'Cache-Control': 'public, max-age=86400',  // Cache for 24 hours
-        'Access-Control-Allow-Origin': '*'
-      });
-      
-      // Pipe the response with error handling
-      proxyRes.pipe(res).on('error', (err) => {
-        console.error(`[PROXY] Error piping response: ${err.message}`);
-        res.end(`console.error("Analytics script error: ${err.message}");`);
-      });
-      
-      console.log(`[PROXY] Successfully proxied analytics script`);
-    });
-    
-    request.on('error', (err) => {
-      console.error(`[PROXY] Error requesting analytics script: ${err.message}`);
-      res.writeHead(500, { 
-        'Content-Type': 'application/javascript',
-        'Access-Control-Allow-Origin': '*'
-      });
-      res.end(`
-        console.warn("Analytics script failed to load. Creating fallback tracking function.");
-        window.sendAnalytics = function(event) {
-          console.log("Analytics event (fallback):", event);
-          // Implement pixel tracking fallback
-          const pixel = new Image();
-          pixel.src = "https://analytics.api.app.kimuse.rw/pixel?" + new URLSearchParams({
-            projectId: "${req.query?.projectId || 'unknown'}",
-            event: JSON.stringify(event),
-            timestamp: new Date().toISOString()
-          }).toString();
-        };
-      `);
-    });
-    
-    request.on('timeout', () => {
-      request.destroy();
-      console.error(`[PROXY] Analytics script request timed out`);
-      res.writeHead(504, { 
-        'Content-Type': 'application/javascript',
-        'Access-Control-Allow-Origin': '*'
-      });
-      res.end(`console.error("Analytics script timed out. Using fallback tracking.");`);
-    });
-  } catch (err) {
-    console.error(`[PROXY] Error in analytics proxy: ${err.message}`);
-    res.writeHead(500, { 
+  // Make a request to the target URL
+  https.get(targetUrl, (proxyRes) => {
+    // Set response headers
+    res.writeHead(200, {
       'Content-Type': 'application/javascript',
-      'Access-Control-Allow-Origin': '*'
+      'Cache-Control': 'public, max-age=86400'  // Cache for 24 hours
     });
-    res.end(`console.error("Analytics script error: ${err.message}");`);
-  }
+    
+    // Pipe the response from the target server to our response
+    proxyRes.pipe(res);
+    
+    console.log(`[PROXY] Successfully proxied analytics script`);
+  }).on('error', (err) => {
+    console.error(`[PROXY] Error proxying analytics script: ${err.message}`);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Error proxying analytics script');
+  });
 }
 
-// Add CORS headers to all responses
-function setCORSHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-}
-
-// Function to handle pixel tracking
+// Function to handle pixel tracking requests
 async function handlePixelTracking(req, res) {
-  console.log(`[PIXEL] Received pixel tracking request`);
+  console.log(`[PIXEL] Handling pixel tracking request`);
   
   try {
     // Set CORS headers
-    setCORSHeaders(res);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
@@ -1867,68 +1839,48 @@ async function handlePixelTracking(req, res) {
     // Get tracking parameters from query string
     const urlParts = req.url.split('?');
     const queryParams = new URLSearchParams(urlParts[1] || '');
-    const projectId = queryParams.get('projectId');
-    const event = queryParams.get('event');
-    const timestamp = queryParams.get('timestamp');
+    const projectId = queryParams.get('projectId') || '24d98536-a1e2-462b-ba2e-d6c192c79096';
+    const event = queryParams.get('event') || 'pageview';
     
-    // Forward the tracking data to the analytics service
-    const trackingUrl = 'https://analytics.api.app.kimuse.rw/pixel';
-    const forwardRequest = https.request(trackingUrl + '?' + urlParts[1], {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'AI-Report-Analyzer/1.0',
-        'Accept': 'image/gif',
-        'Origin': req.headers.origin || 'https://kyle.app.kimuse.rw'
-      }
-    });
+    // Forward tracking data to analytics service
+    const forwardUrl = `https://analytics.api.app.kimuse.rw/pixel?projectId=${projectId}&event=${event}`;
     
-    forwardRequest.on('response', (trackingRes) => {
-      // Return a 1x1 transparent GIF
-      res.writeHead(200, {
-        'Content-Type': 'image/gif',
-        'Content-Length': '42',
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
+    // Make request to analytics service
+    await new Promise((resolve, reject) => {
+      https.get(forwardUrl, (forwardRes) => {
+        resolve();
+      }).on('error', (err) => {
+        console.error(`[PIXEL] Error forwarding pixel request: ${err.message}`);
+        resolve(); // Resolve anyway to send pixel response
       });
-      res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
     });
     
-    forwardRequest.on('error', (err) => {
-      console.error(`[PIXEL] Error forwarding pixel request: ${err.message}`);
-      // Still return a pixel to prevent client-side errors
-      res.writeHead(200, {
-        'Content-Type': 'image/gif',
-        'Content-Length': '42',
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
-      });
-      res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
-    });
-    
-    forwardRequest.end();
-  } catch (err) {
-    console.error(`[PIXEL] Error in pixel tracking: ${err.message}`);
-    // Return pixel even on error
+    // Return 1x1 transparent GIF
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     res.writeHead(200, {
       'Content-Type': 'image/gif',
-      'Content-Length': '42',
+      'Content-Length': pixel.length,
       'Cache-Control': 'no-cache, no-store, must-revalidate'
     });
-    res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+    res.end(pixel);
+    
+  } catch (err) {
+    console.error(`[PIXEL] Error handling pixel request: ${err.message}`);
+    // Still return pixel even if there's an error
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    res.writeHead(200, {
+      'Content-Type': 'image/gif',
+      'Content-Length': pixel.length
+    });
+    res.end(pixel);
   }
 }
 
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
-  // Set higher timeout for the server
-  req.setTimeout(180000); // 3 minutes
-  res.setTimeout(180000); // 3 minutes
-  
   const start = Date.now();
   
   try {
-    // Add keep-alive header for all responses
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Keep-Alive', 'timeout=120');
-    
     console.log(`[REQUEST] ${req.method} ${req.url} from ${req.socket.remoteAddress}`);
     console.log(`[REQUEST] Headers: ${JSON.stringify(req.headers)}`);
     
@@ -1944,6 +1896,12 @@ const server = http.createServer((req, res) => {
         time: new Date().toISOString(),
         uptime: process.uptime()
       }));
+      return;
+    }
+    
+    // Handle pixel tracking requests
+    if (req.url.startsWith('/api/pixel')) {
+      handlePixelTracking(req, res);
       return;
     }
     
@@ -1979,13 +1937,6 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.startsWith('/api/download')) {
       console.log(`[API] Received document download request`);
       handleDownloadDocument(req, res);
-      return;
-    }
-    
-    // In the server request handler, add the new pixel endpoint
-    if (req.method === 'GET' && req.url.startsWith('/api/pixel')) {
-      console.log(`[PIXEL] Handling pixel tracking request`);
-      handlePixelTracking(req, res);
       return;
     }
     
