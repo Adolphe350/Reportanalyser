@@ -4,6 +4,13 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.15] - 2024-04-02
+
+### Fixed
+- Fixed "Missing project ID" error by updating analytics script configuration
+- Changed analytics script initialization to use data-project-id attribute
+- Removed window.analyticsConfig in favor of direct script attribute configuration
+
 ## [1.0.14] - 2024-04-02
 
 ### Fixed
