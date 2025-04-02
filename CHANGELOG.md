@@ -4,6 +4,13 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.16] - 2024-04-02
+
+### Fixed
+- Fixed analytics tracking by switching to direct analytics API endpoint
+- Removed proxy configuration that was causing 404 errors
+- Updated analytics script source to use the official tracking endpoint
+
 ## [1.0.15] - 2024-04-02
 
 ### Fixed
