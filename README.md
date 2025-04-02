@@ -1,6 +1,8 @@
 # AI Report Analyzer - BEST WORKING VERSION
 
 > **Note:** This is the verified best working version of the application. Commit hash: e79a774bb062c0c6204aae2ba08502283bd3bf28
+> 
+> **Update (2024-04-02):** Analytics tracking has been updated with a new project ID.
 
 An application that uses Gemini AI to analyze uploaded reports and documents, extracting key insights, metrics, and recommendations.
 
