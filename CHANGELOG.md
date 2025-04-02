@@ -4,6 +4,16 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.11] - 2024-04-02
+
+### Fixed
+- Enhanced Gateway Timeout (504) handling:
+  - Increased server timeouts to 3 minutes
+  - Added TCP keep-alive settings
+  - Improved Traefik configuration with retry logic
+  - Added better CORS and connection handling
+  - Enhanced error reporting for timeouts
+
 ## [1.0.10] - 2024-04-02
 
 ### Fixed

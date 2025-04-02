@@ -18,12 +18,19 @@ services:
       - "traefik.http.routers.app-uos88s8kwg4cocsscsc0w4ww.rule=Host(`kyle.app.kimuse.rw`)"
       - "traefik.http.routers.app-uos88s8kwg4cocsscsc0w4ww.entrypoints=web,websecure"
       - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.server.port=9000"
-      # Important: Specify the correct service for Traefik
       - "traefik.http.routers.app-uos88s8kwg4cocsscsc0w4ww.service=app-uos88s8kwg4cocsscsc0w4ww"
-      # Health check settings
+      # Health check settings with increased timeouts
       - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.healthcheck.path=/health"
-      - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.healthcheck.interval=10s"
-      - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.healthcheck.timeout=5s"
+      - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.healthcheck.interval=15s"
+      - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.healthcheck.timeout=10s"
+      # Increased timeouts and retry settings
+      - "traefik.http.middlewares.app-timeout.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.app-timeout.forwardauth.authResponseHeaders=X-Forwarded-User"
+      - "traefik.http.services.app-uos88s8kwg4cocsscsc0w4ww.loadbalancer.responseForwarding.flushInterval=100ms"
+      - "traefik.http.routers.app-uos88s8kwg4cocsscsc0w4ww.middlewares=app-timeout"
+      - "traefik.http.middlewares.app-retry.retry.attempts=3"
+      - "traefik.http.middlewares.app-retry.retry.initialInterval=100ms"
+      - "traefik.http.routers.app-uos88s8kwg4cocsscsc0w4ww.middlewares=app-retry"
 
 networks:
   coolify-infra:

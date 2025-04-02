@@ -1844,8 +1844,8 @@ async function proxyAnalyticsScript(req, res) {
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   // Set higher timeout for the server
-  req.setTimeout(120000); // 2 minutes
-  res.setTimeout(120000); // 2 minutes
+  req.setTimeout(180000); // 3 minutes
+  res.setTimeout(180000); // 3 minutes
   
   const start = Date.now();
   
