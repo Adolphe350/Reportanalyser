@@ -3,45 +3,45 @@ FROM node:18-alpine
 # Install networking and diagnostic tools
 RUN apk add --no-cache busybox-extras curl net-tools netcat-openbsd iputils
 
-# Create app directory outside of /app to avoid Coolify's volume mount
+# Create app directory
 WORKDIR /app
 
-# Copy package.json and install dependencies
+# Copy package files first for better caching
 COPY package*.json ./
-RUN npm install
 
-# Copy source files from the repository with explicit file list for visibility
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy the rest of the application
 COPY . .
+
+# Move HTML files to public directory if they're in root
+RUN mkdir -p public && \
+    if [ -f "./index.html" ]; then mv ./index.html ./public/; fi && \
+    if [ -f "./dashboard.html" ]; then mv ./dashboard.html ./public/; fi
+
+# Create uploads directory
+RUN mkdir -p uploads && chmod 777 uploads
 
 # Log directory contents for debugging
 RUN echo "Files in working directory:" && ls -la && \
-    echo "Files in public directory:" && ls -la public && \
-    if [ -f "./public/dashboard.html" ]; then echo "dashboard.html exists"; else echo "WARNING: dashboard.html not found"; fi && \
-    if [ -f "./public/index.html" ]; then echo "index.html exists"; else echo "WARNING: index.html not found"; fi
+    echo "Files in public directory:" && ls -la public
 
-# Create a more comprehensive healthcheck script
+# Create a healthcheck script
 RUN echo '#!/bin/sh' > healthcheck.sh && \
-    echo 'echo "Running healthcheck..."' >> healthcheck.sh && \
-    echo 'echo "Network status:"' >> healthcheck.sh && \
-    echo 'netstat -tulpn | grep 9000 || echo "Port 9000 not found in netstat"' >> healthcheck.sh && \
-    echo 'echo "Testing server connectivity:"' >> healthcheck.sh && \
-    echo 'curl -v -s http://localhost:9000/health && echo "" || echo "Health check failed"' >> healthcheck.sh && \
-    echo 'echo "Testing file access:"' >> healthcheck.sh && \
-    echo 'curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/ && echo " - Root path"' >> healthcheck.sh && \
-    echo 'curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/dashboard.html && echo " - Dashboard"' >> healthcheck.sh && \
+    echo 'curl -f http://localhost:9000/health || exit 1' >> healthcheck.sh && \
     chmod +x healthcheck.sh
 
 # Set environment variables
 ENV PORT=9000
 ENV NODE_ENV=production
-# Set Node.js memory limit but remove flags that might cause issues
-ENV NODE_OPTIONS="--max-old-space-size=256"
+ENV HOST=0.0.0.0
 
 # Expose the port
 EXPOSE 9000
 
-# Set up healthcheck with longer timeout
-HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 CMD ./healthcheck.sh
+# Set up healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD ./healthcheck.sh
 
-# Start the server with optimized settings and enable full debugging
+# Start the server
 CMD ["npm", "start"] 
