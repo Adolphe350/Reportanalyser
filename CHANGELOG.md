@@ -4,6 +4,17 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.7] - 2024-04-02
+
+### Fixed
+- Fixed Gateway Timeout (504) issues by implementing:
+  - Increased server and client timeouts to 2 minutes
+  - Added keep-alive connections
+  - Improved MinIO client configuration
+  - Added retry logic with exponential backoff
+  - Enhanced error handling and user feedback
+  - Implemented connection persistence
+
 ## [1.0.6] - 2024-04-02
 
 ### Changed

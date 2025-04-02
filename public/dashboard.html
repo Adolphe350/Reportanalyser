@@ -1270,20 +1270,24 @@
                 
                 // Create a controller to abort the fetch if it takes too long - INCREASED TIMEOUT
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout (increased from 20s)
+                const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
                 
-                // Add retry functionality
+                // Add retry functionality with exponential backoff
                 let retryCount = 0;
-                const maxRetries = 2;
+                const maxRetries = 3;
                 
                 const fetchWithRetry = () => {
+                    // Calculate exponential backoff delay
+                    const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+                    
                     // Fetch the analysis from the server API endpoint
                     console.log(`Sending request to: /api/analysis?id=${fileId}${retryCount > 0 ? ' (Retry attempt: ' + retryCount + ')' : ''}`);
                     fetch(`/api/analysis?id=${fileId}`, {
                         signal: controller.signal,
                         headers: {
                             'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache'
+                            'Pragma': 'no-cache',
+                            'Connection': 'keep-alive'
                         }
                     })
                     .then(response => {
@@ -1437,23 +1441,19 @@
                             retryCount++;
                             clearTimeout(timeoutId);
                             
-                            // Update the loading status to show retry
+                            // Update the loading status to show retry with backoff delay
                             documentSummary.innerHTML = `<div class="loading-spinner">
-                                Request timed out. Retrying (${retryCount}/${maxRetries})...
+                                Request timed out. Retrying in ${backoffDelay/1000}s (${retryCount}/${maxRetries})...
                                 <div style="margin-top:10px; font-size:0.8em; color:#ff6600;">
                                     The server is taking longer than usual to respond.
                                 </div>
                             </div>`;
                             
-                            // Wait a moment before retrying
+                            // Wait before retrying with exponential backoff
                             setTimeout(() => {
-                                console.log(`Retrying request (${retryCount}/${maxRetries})...`);
-                                // Create a new abort controller for the retry
-                                const newController = new AbortController();
-                                controller = newController;
-                                timeoutId = setTimeout(() => controller.abort(), 60000);
+                                console.log(`Retrying request (${retryCount}/${maxRetries}) after ${backoffDelay}ms delay...`);
                                 fetchWithRetry();
-                            }, 2000);
+                            }, backoffDelay);
                             
                             return;
                         }
@@ -1462,45 +1462,8 @@
                         clearInterval(loadingTimer);
                         clearTimeout(timeoutId);
                         
-                        // Special handling for AbortError (timeout)
-                        const errorMessage = error.name === 'AbortError' 
-                            ? 'The request took too long to complete. The server might be busy or experiencing issues.'
-                            : error.message;
-                        
-                        // Display a more helpful error message with suggestions
-                        documentSummary.innerHTML = `
-                            <div class="error-message">
-                                <h3>Error loading analysis: ${errorMessage}</h3>
-                                <p>This could be because:</p>
-                                <ul>
-                                    <li>The server is currently experiencing high load or connection issues</li>
-                                    <li>The document has not been analyzed yet</li>
-                                    <li>The analysis file may have a different name format than expected</li>
-                                    <li>The analysis file may have been removed or corrupted</li>
-                                </ul>
-                                <p>Troubleshooting suggestions:</p>
-                                <ul>
-                                    <li>Try refreshing the page and loading the analysis again</li>
-                                    <li>Check the server logs for detailed error messages</li>
-                                    <li>If the problem persists, try uploading the document again to generate a new analysis</li>
-                                </ul>
-                            </div>
-                        `;
-                        
-                        // Add a retry button
-                        const retryButton = document.createElement('button');
-                        retryButton.className = 'btn';
-                        retryButton.style.marginTop = '15px';
-                        retryButton.textContent = 'Try Again';
-                        retryButton.addEventListener('click', () => {
-                            // Reset retry count
-                            retryCount = 0;
-                            loadAnalysisForDocument(documentId);
-                        });
-                        documentSummary.appendChild(retryButton);
-                        
-                        // Scroll to analysis results
-                        analysisResults.scrollIntoView({ behavior: 'smooth' });
+                        // Display error message with retry button
+                        displayErrorMessage(error);
                     });
                 };
                 
@@ -1741,6 +1704,43 @@
                 
                 documentsContainer.innerHTML = '';
                 documentsContainer.appendChild(documentsList);
+            }
+            
+            // Function to display error message with retry button
+            function displayErrorMessage(error) {
+                const errorMessage = error.name === 'AbortError' 
+                    ? 'The request took too long to complete. The server might be busy or experiencing issues.'
+                    : error.message;
+                
+                documentSummary.innerHTML = `
+                    <div class="error-message">
+                        <h3>Error loading analysis: ${errorMessage}</h3>
+                        <p>This could be because:</p>
+                        <ul>
+                            <li>The server is currently experiencing high load or connection issues</li>
+                            <li>The document has not been analyzed yet</li>
+                            <li>The analysis file may have a different name format than expected</li>
+                            <li>The analysis file may have been removed or corrupted</li>
+                        </ul>
+                        <p>Troubleshooting suggestions:</p>
+                        <ul>
+                            <li>Try refreshing the page and loading the analysis again</li>
+                            <li>Check the server logs for detailed error messages</li>
+                            <li>If the problem persists, try uploading the document again to generate a new analysis</li>
+                        </ul>
+                    </div>
+                `;
+                
+                // Add a retry button
+                const retryButton = document.createElement('button');
+                retryButton.className = 'btn';
+                retryButton.style.marginTop = '15px';
+                retryButton.textContent = 'Try Again';
+                retryButton.addEventListener('click', () => {
+                    retryCount = 0;
+                    loadAnalysisForDocument(documentId);
+                });
+                documentSummary.appendChild(retryButton);
             }
         });
     </script>

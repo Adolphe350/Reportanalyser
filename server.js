@@ -98,7 +98,16 @@ try {
       port: minioPort,
       useSSL: minioUseSSL,
       accessKey: minioAccessKey,
-      secretKey: minioSecretKey
+      secretKey: minioSecretKey,
+      // Add timeout settings
+      transport: {
+        agent: new http.Agent({
+          keepAlive: true,
+          keepAliveMsecs: 3000,
+          maxSockets: 10,
+          timeout: 120000 // 2 minutes
+        })
+      }
     });
     
     console.log(`[STARTUP] MinIO client initialized successfully with endpoint ${minioClient.host}`);
@@ -382,128 +391,80 @@ try {
 async function analyzeDocumentWithGemini(text, fileName) {
   console.log(`[AI] Starting document analysis with Gemini for ${fileName}`);
   
-  // Check if Gemini is available
-  if (!geminiAvailable || !geminiModel) {
-    console.log(`[AI] Gemini is not available, using simulation mode`);
-    console.log(`[AI] geminiAvailable: ${geminiAvailable}, geminiModel: ${geminiModel ? 'defined' : 'undefined'}`);
-    return getSimulatedAnalysisResults(fileName, text);
-  }
+  // Add retry logic
+  const maxRetries = 3;
+  let retryCount = 0;
   
-  try {
-    console.log(`[AI] Preparing to analyze document text (${text.length} chars)`);
-    
-    // Create a more detailed and effective prompt for the Gemini AI model
-    const prompt = `
-You are an expert document and report analyzer with expertise in multiple domains. I need you to thoroughly analyze the following document and provide a comprehensive assessment.
-
-Document name: "${fileName}"
-
-DOCUMENT TEXT TO ANALYZE:
-${text.substring(0, 15000)} 
-${text.length > 15000 ? '... (text truncated for size)' : ''}
-
-ANALYSIS INSTRUCTIONS:
-1. First determine if the document text appears to be readable content or if it appears to be binary/corrupted content. 
-   If it's binary/corrupted, indicate this in your summary and do your best with what you can interpret.
-
-2. Create a concise 1-2 paragraph summary of the document's main content and purpose.
-
-3. Extract 5-6 key insights from the document that represent the most important information.
-
-4. Identify the main themes, topics, and subject areas of the document.
-
-5. Assess the sentiment of the document (positive, negative, neutral) and provide a confidence score.
-
-6. Provide 3-5 specific, actionable recommendations based on the document content.
-
-7. Note any important metrics, data points, or statistics mentioned in the document.
-
-FORMAT YOUR RESPONSE AS STRUCTURED JSON with the following format:
-{
-  "summary": "1-2 paragraph summary of the document's content and purpose",
-  "keyInsights": [
-    "First key insight from the document",
-    "Second key insight from the document",
-    etc.
-  ],
-  "metrics": {
-    "sentiment": number between 0 and 1 representing sentiment score (higher is more positive),
-    "confidence": number between 0.7 and 1 representing confidence in analysis,
-    "topics": [
-      "First main topic/theme",
-      "Second main topic/theme",
-      etc.
-    ]
-  },
-  "recommendations": [
-    "First specific recommendation based on the document",
-    "Second specific recommendation based on the document",
-    etc.
-  ]
-}
-
-IMPORTANT: Return ONLY the JSON object as your response, nothing else. Do not include explanation text, formatting, or markdown.
-`;
-
-    console.log(`[AI] Creating Gemini request with prompt length: ${prompt.length}`);
-    console.log(`[AI] Sending request to Gemini AI`);
-    
-    // Make the API call with INCREASED timeout handling
-    const startTime = Date.now();
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Gemini API request timed out after 60 seconds')), 60000)
-    );
-    
-    // Create the Gemini request
-    const geminiPromise = geminiModel.generateContent(prompt);
-    
-    // Wait for either the API response or timeout
-    console.log(`[AI] Waiting for Gemini response...`);
-    const result = await Promise.race([geminiPromise, timeoutPromise]);
-    console.log(`[AI] Received initial response object from Gemini`);
-    
-    // Extract the text response with another timeout to prevent hanging on response processing
-    const responseTimeout = setTimeout(() => {
-      console.log(`[AI] Text extraction from response timed out`);
-      throw new Error('Timed out while extracting text from Gemini response');
-    }, 30000);
-    
-    const response = await result.response;
-    const responseText = response.text();
-    clearTimeout(responseTimeout);
-    
-    const endTime = Date.now();
-    console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
-    console.log(`[AI] Response text length: ${responseText.length} chars`);
-    console.log(`[AI] Response text (first 200 chars): ${responseText.substring(0, 200).replace(/\n/g, ' ')}...`);
-    
-    // Parse the response to extract the JSON
+  while (retryCount < maxRetries) {
     try {
-      // Extract JSON object from the text response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const jsonStr = jsonMatch[0];
-        console.log(`[AI] Extracted JSON from response (${jsonStr.length} chars)`);
-        
-        const analysis = JSON.parse(jsonStr);
-        console.log(`[AI] Successfully parsed JSON into analysis object`);
-        console.log(`[AI] Analysis contains ${analysis.keyInsights ? analysis.keyInsights.length : 0} insights and ${analysis.recommendations ? analysis.recommendations.length : 0} recommendations`);
-        
-        return analysis;
-      } else {
-        console.error(`[AI] Could not find JSON in response`);
+      // Make the API call with INCREASED timeout handling
+      const startTime = Date.now();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Gemini API request timed out after 90 seconds')), 90000)
+      );
+      
+      // Create the Gemini request
+      const geminiPromise = geminiModel.generateContent(prompt);
+      
+      // Wait for either the API response or timeout
+      console.log(`[AI] Waiting for Gemini response... (Attempt ${retryCount + 1}/${maxRetries})`);
+      const result = await Promise.race([geminiPromise, timeoutPromise]);
+      
+      console.log(`[AI] Received initial response object from Gemini`);
+      
+      // Extract the text response with another timeout to prevent hanging on response processing
+      const responseTimeout = setTimeout(() => {
+        console.log(`[AI] Text extraction from response timed out`);
+        throw new Error('Timed out while extracting text from Gemini response');
+      }, 30000);
+      
+      const response = await result.response;
+      const responseText = response.text();
+      clearTimeout(responseTimeout);
+      
+      const endTime = Date.now();
+      console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
+      console.log(`[AI] Response text length: ${responseText.length} chars`);
+      console.log(`[AI] Response text (first 200 chars): ${responseText.substring(0, 200).replace(/\n/g, ' ')}...`);
+      
+      // Parse the response to extract the JSON
+      try {
+        // Extract JSON object from the text response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonStr = jsonMatch[0];
+          console.log(`[AI] Extracted JSON from response (${jsonStr.length} chars)`);
+          
+          const analysis = JSON.parse(jsonStr);
+          console.log(`[AI] Successfully parsed JSON into analysis object`);
+          console.log(`[AI] Analysis contains ${analysis.keyInsights ? analysis.keyInsights.length : 0} insights and ${analysis.recommendations ? analysis.recommendations.length : 0} recommendations`);
+          
+          return analysis;
+        } else {
+          console.error(`[AI] Could not find JSON in response`);
+          console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
+          return getSimulatedAnalysisResults(fileName, text);
+        }
+      } catch (parseError) {
+        console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
         console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
         return getSimulatedAnalysisResults(fileName, text);
       }
-    } catch (parseError) {
-      console.error(`[AI] Error parsing Gemini response: ${parseError.message}`);
-      console.error(`[AI] Raw response text: ${responseText.substring(0, 500)}...`);
+    } catch (err) {
+      retryCount++;
+      console.error(`[AI] Error in Gemini analysis (Attempt ${retryCount}/${maxRetries}): ${err.message}`);
+      
+      if (retryCount < maxRetries) {
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+        console.log(`[AI] Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      console.error(`[AI] All retry attempts failed. Falling back to simulated results.`);
       return getSimulatedAnalysisResults(fileName, text);
     }
-  } catch (err) {
-    console.error(`[AI] Error in Gemini analysis: ${err.message}`);
-    console.error(`[AI] Error stack: ${err.stack}`);
-    return getSimulatedAnalysisResults(fileName, text);
   }
 }
 
@@ -1821,9 +1782,17 @@ async function proxyAnalyticsScript(req, res) {
 
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
+  // Set higher timeout for the server
+  req.setTimeout(120000); // 2 minutes
+  res.setTimeout(120000); // 2 minutes
+  
   const start = Date.now();
   
   try {
+    // Add keep-alive header for all responses
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Keep-Alive', 'timeout=120');
+    
     console.log(`[REQUEST] ${req.method} ${req.url} from ${req.socket.remoteAddress}`);
     console.log(`[REQUEST] Headers: ${JSON.stringify(req.headers)}`);
     
