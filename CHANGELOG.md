@@ -4,6 +4,11 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.6] - 2024-04-02
+
+### Changed
+- Updated analytics tracking script project ID to db60ea84-01e7-48fd-b1f0-b181dbb5863d
+
 ## [1.0.5] - 2024-04-02
 
 ### Fixed
