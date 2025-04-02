@@ -4,70 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Report Analyzer</title>
-    <!-- Analytics script with error handling -->
-    <script>
-        // Initialize analytics configuration
-        window.analyticsConfig = {
-            projectId: 'db60ea84-01e7-48fd-b1f0-b181dbb5863d',
-            initialized: false
-        };
-
-        // Create a simulated analytics function when the original script fails
-        window.sendAnalytics = function(event) {
-            if (!window.analyticsConfig.initialized) {
-                console.log("Analytics not initialized yet, queuing event:", event);
-                return;
-            }
-            console.log("Analytics event (fallback):", event);
-            // Implement pixel tracking fallback
-            try {
-                const pixel = new Image();
-                pixel.src = "https://analytics.api.app.kimuse.rw/pixel?" + new URLSearchParams({
-                    projectId: window.analyticsConfig.projectId,
-                    event: JSON.stringify(event),
-                    timestamp: new Date().toISOString()
-                }).toString();
-            } catch (err) {
-                console.warn("Pixel tracking failed:", err);
-            }
-        };
-
-        // Load the analytics script with retry
-        function loadAnalytics(retryCount = 0) {
-            if (window.analyticsConfig.initialized) {
-                console.log('Analytics already initialized');
-                return;
-            }
-
-            const maxRetries = 3;
-            const script = document.createElement('script');
-            script.src = "https://analytics.api.app.kimuse.rw/tracking/script.min.js";
-            script.setAttribute('data-project-id', window.analyticsConfig.projectId);
-            script.async = true;
-            
-            script.onload = function() {
-                console.log('Analytics script loaded successfully');
-                window.analyticsConfig.initialized = true;
-                // Initialize any queued events here if needed
-            };
-            
-            script.onerror = function() {
-                console.warn(`Analytics script failed to load (attempt ${retryCount + 1}/${maxRetries})`);
-                if (retryCount < maxRetries) {
-                    setTimeout(() => loadAnalytics(retryCount + 1), 1000 * Math.pow(2, retryCount));
-                }
-            };
-            
-            document.head.appendChild(script);
-        }
-
-        // Start loading analytics when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadAnalytics);
-        } else {
-            loadAnalytics();
-        }
-    </script>
+    <!-- Analytics script -->
+    <script src="https://analytics.api.app.kimuse.rw/tracking/script.min.js" data-project-id="db60ea84-01e7-48fd-b1f0-b181dbb5863d"></script>
     <style>
         /* Reset and base styles */
         * { margin: 0; padding: 0; box-sizing: border-box; }
