@@ -447,19 +447,29 @@ IMPORTANT: Return ONLY the JSON object as your response, nothing else. Do not in
     console.log(`[AI] Creating Gemini request with prompt length: ${prompt.length}`);
     console.log(`[AI] Sending request to Gemini AI`);
     
-    // Make the API call with timeout handling
+    // Make the API call with INCREASED timeout handling
     const startTime = Date.now();
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Gemini API request timed out after 30 seconds')), 30000)
+      setTimeout(() => reject(new Error('Gemini API request timed out after 60 seconds')), 60000)
     );
     
     // Create the Gemini request
     const geminiPromise = geminiModel.generateContent(prompt);
     
     // Wait for either the API response or timeout
+    console.log(`[AI] Waiting for Gemini response...`);
     const result = await Promise.race([geminiPromise, timeoutPromise]);
+    console.log(`[AI] Received initial response object from Gemini`);
+    
+    // Extract the text response with another timeout to prevent hanging on response processing
+    const responseTimeout = setTimeout(() => {
+      console.log(`[AI] Text extraction from response timed out`);
+      throw new Error('Timed out while extracting text from Gemini response');
+    }, 30000);
+    
     const response = await result.response;
     const responseText = response.text();
+    clearTimeout(responseTimeout);
     
     const endTime = Date.now();
     console.log(`[AI] Received response from Gemini in ${endTime - startTime}ms`);
@@ -1607,7 +1617,7 @@ async function handleGetAnalysis(req, res) {
     
     console.log(`[API] Retrieving analysis for file ID: ${fileId}`);
     
-    // Set a timeout to prevent hanging requests
+    // Set a timeout to prevent hanging requests - INCREASED TIMEOUT
     const analysisTimeout = setTimeout(() => {
       console.log(`[API] Analysis retrieval timed out for file ID: ${fileId}`);
       return res.end(JSON.stringify({
@@ -1615,7 +1625,7 @@ async function handleGetAnalysis(req, res) {
         message: 'Analysis retrieval timed out',
         error: 'Request took too long to process'
       }));
-    }, 15000); // 15 second timeout
+    }, 45000); // Increased from 15 to 45 seconds
     
     // Get the analysis data from MinIO
     try {

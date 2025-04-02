@@ -1221,10 +1221,25 @@
                 const fileName = document.getElementById('file-name');
                 const fileSize = document.getElementById('file-size');
                 
-                documentSummary.innerHTML = '<div class="loading-spinner">Loading analysis...</div>';
+                documentSummary.innerHTML = '<div class="loading-spinner">Loading analysis... <div id="loading-timer" style="margin-top:10px; font-size:0.8em; color:#666;">0s</div></div>';
                 insightsContainer.innerHTML = '';
                 metricsContainer.innerHTML = '';
                 recommendationsList.innerHTML = '';
+                
+                // Add a timer to show how long it's taking
+                let secondsElapsed = 0;
+                const loadingTimer = setInterval(() => {
+                    secondsElapsed++;
+                    const timerElement = document.getElementById('loading-timer');
+                    if (timerElement) {
+                        if (secondsElapsed < 30) {
+                            timerElement.textContent = `${secondsElapsed}s`;
+                        } else {
+                            timerElement.textContent = `${secondsElapsed}s - Taking longer than usual, please be patient...`;
+                            timerElement.style.color = '#ff6600';
+                        }
+                    }
+                }, 1000);
                 
                 // Find the document in our loaded documents
                 const docInfo = allDocuments.find(doc => doc.objectName === documentId);
@@ -1246,188 +1261,244 @@
                 // Log details for debugging
                 console.log(`Fetching analysis for fileId: ${fileId}`);
                 
-                // Create a controller to abort the fetch if it takes too long
+                // Create a controller to abort the fetch if it takes too long - INCREASED TIMEOUT
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout (increased from 20s)
                 
-                // Fetch the analysis from the server API endpoint, let the server handle the logic
-                console.log(`Sending request to: /api/analysis?id=${fileId}`);
-                fetch(`/api/analysis?id=${fileId}`, {
-                    signal: controller.signal,
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache'
-                    }
-                })
-                .then(response => {
-                    clearTimeout(timeoutId);
-                    console.log(`Analysis API response status: ${response.status}`);
-                    
-                    if (!response.ok) {
-                        console.error(`Error response: ${response.status} ${response.statusText}`);
-                        throw new Error(`Analysis not found (Status: ${response.status})`);
-                    }
-                    return response.json();
-                })
-                .then(response => {
-                    console.log('Analysis API response received:', response);
-                    
-                    // Check if the response is valid
-                    if (!response.success) {
-                        console.error('API reported failure:', response.message || 'Unknown error');
-                        throw new Error(response.message || 'Failed to load analysis');
-                    }
-                    
-                    try {
-                        // Log the full response structure for debugging
-                        console.log('Analysis data structure:', JSON.stringify(response.data || {}).substring(0, 200) + '...');
-                        
-                        // Get the data object from the response
-                        const data = response.data;
-                        if (!data) {
-                            throw new Error('Response missing data property');
+                // Add retry functionality
+                let retryCount = 0;
+                const maxRetries = 2;
+                
+                const fetchWithRetry = () => {
+                    // Fetch the analysis from the server API endpoint
+                    console.log(`Sending request to: /api/analysis?id=${fileId}${retryCount > 0 ? ' (Retry attempt: ' + retryCount + ')' : ''}`);
+                    fetch(`/api/analysis?id=${fileId}`, {
+                        signal: controller.signal,
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache'
                         }
+                    })
+                    .then(response => {
+                        console.log(`Analysis API response status: ${response.status}`);
                         
-                        // Get the actual analysis object - it can be nested in an 'analysis' property
-                        // or can be directly in specific properties like 'summary', 'insights', etc.
-                        const analysisData = data.analysis || data;
-                        console.log('Analysis data extracted:', analysisData);
-                        
-                        // DISPLAY SUMMARY
-                        if (analysisData.summary) {
-                            documentSummary.innerHTML = analysisData.summary;
-                        } else if (data.summary) {
-                            documentSummary.innerHTML = data.summary;
-                        } else {
-                            documentSummary.innerHTML = 'No summary available';
-                        }
-                        
-                        // DISPLAY INSIGHTS
-                        // Check multiple possible property names for insights
-                        const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
-                        
-                        if (insights && insights.length > 0) {
-                            const insightsList = document.createElement('ul');
-                            insightsList.className = 'insight-list';
-                            
-                            insights.forEach(insight => {
-                                const insightItem = document.createElement('li');
-                                insightItem.className = 'insight-item';
-                                insightItem.textContent = insight;
-                                insightsList.appendChild(insightItem);
-                            });
-                            
-                            insightsContainer.innerHTML = '';
-                            insightsContainer.appendChild(insightsList);
-                        } else {
-                            insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
-                        }
-                        
-                        // DISPLAY METRICS
-                        const metrics = analysisData.metrics || data.metrics || {};
-                        
-                        if (metrics && Object.keys(metrics).length > 0) {
-                            metricsContainer.innerHTML = '';
-                            
-                            for (const [key, value] of Object.entries(metrics)) {
-                                const metricCard = document.createElement('div');
-                                metricCard.className = 'metric-card';
-                                
-                                let displayValue = value;
-                                if (Array.isArray(value)) {
-                                    displayValue = value.join(', ');
-                                } else if (typeof value === 'object') {
-                                    displayValue = JSON.stringify(value);
-                                }
-                                
-                                metricCard.innerHTML = `
-                                    <div class="metric-value">${displayValue}</div>
-                                    <div class="metric-label">${key}</div>
-                                `;
-                                
-                                metricsContainer.appendChild(metricCard);
+                        if (!response.ok) {
+                            // Handle non-200 responses
+                            if (response.status === 504) {
+                                console.log('Received 504 Gateway Timeout response');
+                                throw new Error('Server timeout (504) - The request is taking too long to process');
                             }
-                        } else {
-                            metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                            console.error(`Error response: ${response.status} ${response.statusText}`);
+                            throw new Error(`Analysis not found (Status: ${response.status})`);
+                        }
+                        return response.json();
+                    })
+                    .then(response => {
+                        clearInterval(loadingTimer);
+                        clearTimeout(timeoutId);
+                        console.log('Analysis API response received:', response);
+                        
+                        // Check if the response is valid
+                        if (!response.success) {
+                            console.error('API reported failure:', response.message || 'Unknown error');
+                            throw new Error(response.message || 'Failed to load analysis');
                         }
                         
-                        // DISPLAY RECOMMENDATIONS
-                        const recommendations = analysisData.recommendations || data.recommendations || [];
-                        
-                        if (recommendations && recommendations.length > 0) {
-                            recommendationsList.innerHTML = '';
+                        try {
+                            // Log the full response structure for debugging
+                            console.log('Analysis data structure:', JSON.stringify(response.data || {}).substring(0, 200) + '...');
                             
-                            recommendations.forEach(recommendation => {
-                                const recommendationItem = document.createElement('li');
-                                recommendationItem.textContent = recommendation;
-                                recommendationsList.appendChild(recommendationItem);
-                            });
-                        } else {
-                            recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                            // Get the data object from the response
+                            const data = response.data;
+                            if (!data) {
+                                throw new Error('Response missing data property');
+                            }
+                            
+                            // Get the actual analysis object - it can be nested in an 'analysis' property
+                            // or can be directly in specific properties like 'summary', 'insights', etc.
+                            const analysisData = data.analysis || data;
+                            console.log('Analysis data extracted:', analysisData);
+                            
+                            // DISPLAY SUMMARY
+                            if (analysisData.summary) {
+                                documentSummary.innerHTML = analysisData.summary;
+                            } else if (data.summary) {
+                                documentSummary.innerHTML = data.summary;
+                            } else {
+                                documentSummary.innerHTML = 'No summary available';
+                            }
+                            
+                            // DISPLAY INSIGHTS
+                            // Check multiple possible property names for insights
+                            const insights = analysisData.keyInsights || analysisData.insights || data.keyInsights || data.insights || [];
+                            
+                            if (insights && insights.length > 0) {
+                                const insightsList = document.createElement('ul');
+                                insightsList.className = 'insight-list';
+                                
+                                insights.forEach(insight => {
+                                    const insightItem = document.createElement('li');
+                                    insightItem.className = 'insight-item';
+                                    insightItem.textContent = insight;
+                                    insightsList.appendChild(insightItem);
+                                });
+                                
+                                insightsContainer.innerHTML = '';
+                                insightsContainer.appendChild(insightsList);
+                            } else {
+                                insightsContainer.innerHTML = '<p>No insights available for this document.</p>';
+                            }
+                            
+                            // DISPLAY METRICS
+                            const metrics = analysisData.metrics || data.metrics || {};
+                            
+                            if (metrics && Object.keys(metrics).length > 0) {
+                                metricsContainer.innerHTML = '';
+                                
+                                for (const [key, value] of Object.entries(metrics)) {
+                                    const metricCard = document.createElement('div');
+                                    metricCard.className = 'metric-card';
+                                    
+                                    let displayValue = value;
+                                    if (Array.isArray(value)) {
+                                        displayValue = value.join(', ');
+                                    } else if (typeof value === 'object') {
+                                        displayValue = JSON.stringify(value);
+                                    }
+                                    
+                                    metricCard.innerHTML = `
+                                        <div class="metric-value">${displayValue}</div>
+                                        <div class="metric-label">${key}</div>
+                                    `;
+                                    
+                                    metricsContainer.appendChild(metricCard);
+                                }
+                            } else {
+                                metricsContainer.innerHTML = '<p>No metrics available for this document.</p>';
+                            }
+                            
+                            // DISPLAY RECOMMENDATIONS
+                            const recommendations = analysisData.recommendations || data.recommendations || [];
+                            
+                            if (recommendations && recommendations.length > 0) {
+                                recommendationsList.innerHTML = '';
+                                
+                                recommendations.forEach(recommendation => {
+                                    const recommendationItem = document.createElement('li');
+                                    recommendationItem.textContent = recommendation;
+                                    recommendationsList.appendChild(recommendationItem);
+                                });
+                            } else {
+                                recommendationsList.innerHTML = '<li>No recommendations available for this document.</li>';
+                            }
+                            
+                            // FALLBACK: Display raw data if no structured content was found
+                            const hasContent = analysisData.summary || 
+                                            (insights && insights.length > 0) || 
+                                            (Object.keys(metrics).length > 0) || 
+                                            (recommendations && recommendations.length > 0);
+                            
+                            if (!hasContent) {
+                                console.warn('No structured analysis data found, displaying raw data');
+                                documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
+                                    '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
+                                    JSON.stringify(data, null, 2) + 
+                                    '</pre>';
+                            }
+                            
+                            // Scroll to analysis results
+                            analysisResults.scrollIntoView({ behavior: 'smooth' });
+                        } catch (parseError) {
+                            console.error('Error parsing analysis data:', parseError);
+                            documentSummary.innerHTML = `
+                                <div class="error-message">
+                                    <h3>Error parsing analysis data: ${parseError.message}</h3>
+                                    <p>Raw response data:</p>
+                                    <pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px; max-height: 200px; overflow: auto;">${JSON.stringify(response, null, 2)}</pre>
+                                </div>
+                            `;
+                            insightsContainer.innerHTML = '';
+                            metricsContainer.innerHTML = '';
+                            recommendationsList.innerHTML = '';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading analysis:', error);
+                        
+                        // Check if we should retry
+                        if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('timeout') || error.message.includes('504'))) {
+                            retryCount++;
+                            clearTimeout(timeoutId);
+                            
+                            // Update the loading status to show retry
+                            documentSummary.innerHTML = `<div class="loading-spinner">
+                                Request timed out. Retrying (${retryCount}/${maxRetries})...
+                                <div style="margin-top:10px; font-size:0.8em; color:#ff6600;">
+                                    The server is taking longer than usual to respond.
+                                </div>
+                            </div>`;
+                            
+                            // Wait a moment before retrying
+                            setTimeout(() => {
+                                console.log(`Retrying request (${retryCount}/${maxRetries})...`);
+                                // Create a new abort controller for the retry
+                                const newController = new AbortController();
+                                controller = newController;
+                                timeoutId = setTimeout(() => controller.abort(), 60000);
+                                fetchWithRetry();
+                            }, 2000);
+                            
+                            return;
                         }
                         
-                        // FALLBACK: Display raw data if no structured content was found
-                        const hasContent = analysisData.summary || 
-                                        (insights && insights.length > 0) || 
-                                        (Object.keys(metrics).length > 0) || 
-                                        (recommendations && recommendations.length > 0);
+                        // If we've exhausted retries or it's a different error, show the error message
+                        clearInterval(loadingTimer);
+                        clearTimeout(timeoutId);
                         
-                        if (!hasContent) {
-                            console.warn('No structured analysis data found, displaying raw data');
-                            documentSummary.innerHTML = '<strong>Document Analysis (Raw Data):</strong><br><br>' + 
-                                '<pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px;">' + 
-                                JSON.stringify(data, null, 2) + 
-                                '</pre>';
-                        }
+                        // Special handling for AbortError (timeout)
+                        const errorMessage = error.name === 'AbortError' 
+                            ? 'The request took too long to complete. The server might be busy or experiencing issues.'
+                            : error.message;
+                        
+                        // Display a more helpful error message with suggestions
+                        documentSummary.innerHTML = `
+                            <div class="error-message">
+                                <h3>Error loading analysis: ${errorMessage}</h3>
+                                <p>This could be because:</p>
+                                <ul>
+                                    <li>The server is currently experiencing high load or connection issues</li>
+                                    <li>The document has not been analyzed yet</li>
+                                    <li>The analysis file may have a different name format than expected</li>
+                                    <li>The analysis file may have been removed or corrupted</li>
+                                </ul>
+                                <p>Troubleshooting suggestions:</p>
+                                <ul>
+                                    <li>Try refreshing the page and loading the analysis again</li>
+                                    <li>Check the server logs for detailed error messages</li>
+                                    <li>If the problem persists, try uploading the document again to generate a new analysis</li>
+                                </ul>
+                            </div>
+                        `;
+                        
+                        // Add a retry button
+                        const retryButton = document.createElement('button');
+                        retryButton.className = 'btn';
+                        retryButton.style.marginTop = '15px';
+                        retryButton.textContent = 'Try Again';
+                        retryButton.addEventListener('click', () => {
+                            // Reset retry count
+                            retryCount = 0;
+                            loadAnalysisForDocument(documentId);
+                        });
+                        documentSummary.appendChild(retryButton);
                         
                         // Scroll to analysis results
                         analysisResults.scrollIntoView({ behavior: 'smooth' });
-                    } catch (parseError) {
-                        console.error('Error parsing analysis data:', parseError);
-                        documentSummary.innerHTML = `
-                            <div class="error-message">
-                                <h3>Error parsing analysis data: ${parseError.message}</h3>
-                                <p>Raw response data:</p>
-                                <pre style="white-space: pre-wrap; font-family: monospace; background: #f7f7f7; padding: 10px; border-radius: 5px; max-height: 200px; overflow: auto;">${JSON.stringify(response, null, 2)}</pre>
-                            </div>
-                        `;
-                        insightsContainer.innerHTML = '';
-                        metricsContainer.innerHTML = '';
-                        recommendationsList.innerHTML = '';
-                    }
-                })
-                .catch(error => {
-                    clearTimeout(timeoutId);
-                    console.error('Error loading analysis:', error);
-                    
-                    // Special handling for AbortError (timeout)
-                    const errorMessage = error.name === 'AbortError' 
-                        ? 'The request took too long to complete. The server might be busy or experiencing issues.'
-                        : error.message;
-                    
-                    // Display a more helpful error message with suggestions
-                    documentSummary.innerHTML = `
-                        <div class="error-message">
-                            <h3>Error loading analysis: ${errorMessage}</h3>
-                            <p>This could be because:</p>
-                            <ul>
-                                <li>The server is currently experiencing high load or connection issues</li>
-                                <li>The document has not been analyzed yet</li>
-                                <li>The analysis file may have a different name format than expected</li>
-                                <li>The analysis file may have been removed or corrupted</li>
-                            </ul>
-                            <p>Troubleshooting suggestions:</p>
-                            <ul>
-                                <li>Try refreshing the page and loading the analysis again</li>
-                                <li>Check the server logs for detailed error messages</li>
-                                <li>If the problem persists, try uploading the document again to generate a new analysis</li>
-                            </ul>
-                        </div>
-                    `;
-                    
-                    // Scroll to analysis results
-                    analysisResults.scrollIntoView({ behavior: 'smooth' });
-                });
+                    });
+                };
+                
+                // Start the fetch process
+                fetchWithRetry();
             }
             
             // Function to display only the 5 latest documents on the dashboard

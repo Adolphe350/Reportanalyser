@@ -11,6 +11,7 @@ An application that uses Gemini AI to analyze uploaded reports and documents, ex
 - Interactive dashboard displaying analysis results
 - Responsive design for all device sizes
 - Analytics tracking for monitoring user interactions
+- Robust timeout handling and automatic retry mechanism
 
 ## Setup for Gemini AI Integration
 
@@ -71,6 +72,16 @@ If the Gemini API key is not available or there's an error in the API call, the 
 The integration uses the `@google/generative-ai` npm package to communicate with the Gemini API. The document text is sent to the API with a structured prompt that asks for specific analysis components. The response is then parsed and formatted for display in the dashboard UI.
 
 The application also includes analytics tracking (using a custom analytics service) to monitor user interactions and usage patterns.
+
+### Performance Optimizations
+
+The application includes several optimizations to handle large documents and long-running operations:
+
+1. **Extended timeouts**: Server and client timeout thresholds have been increased to accommodate larger documents.
+2. **Automatic retry mechanism**: Client automatically retries failed API requests with a backoff strategy.
+3. **Progressive loading indicators**: Users are shown real-time feedback on long-running operations.
+4. **Enhanced error handling**: Clear error messages with troubleshooting suggestions.
+5. **Server-side optimizations**: Improved memory management and Gemini API prompt handling.
 
 ## Customizing the Analysis
 

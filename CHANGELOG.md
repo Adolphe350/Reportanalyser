@@ -4,6 +4,14 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.2] - 2024-04-02
+
+### Fixed
+- Fixed Gateway Timeout (504) errors by increasing server and client timeouts
+- Implemented automatic retry mechanism for failed API requests
+- Added better error handling and user feedback during long-running operations
+- Enhanced server-side logging to better diagnose timeout issues
+
 ## [1.0.1] - 2024-04-02
 
 ### Added
