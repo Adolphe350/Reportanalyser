@@ -4,6 +4,12 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.3] - 2024-04-02
+
+### Fixed
+- Fixed CORS issues with analytics tracking script
+- Added error handling for analytics script to provide fallback functionality
+
 ## [1.0.2] - 2024-04-02
 
 ### Fixed

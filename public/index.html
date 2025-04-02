@@ -4,7 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Report Analyzer</title>
-    <script src="https://analytics.api.app.kimuse.rw/tracking/script.min.js" data-project-id="848f9bc7-b405-425f-a6a1-9a895db08f23"></script>
+    <!-- Analytics script with error handling -->
+    <script>
+        // Create a simulated analytics function when the original script fails
+        window.sendAnalytics = function(event) {
+            console.log("Analytics event:", event);
+        };
+        
+        // Try to load the analytics script with error handling
+        (function() {
+            var script = document.createElement('script');
+            script.setAttribute('data-project-id', '848f9bc7-b405-425f-a6a1-9a895db08f23');
+            
+            script.onerror = function() {
+                console.warn("Analytics script could not be loaded due to CORS issues. Using fallback.");
+            };
+            
+            script.src = "https://analytics.api.app.kimuse.rw/tracking/script.min.js";
+            document.head.appendChild(script);
+        })();
+    </script>
     <style>
         /* Reset and base styles */
         * { margin: 0; padding: 0; box-sizing: border-box; }

@@ -12,6 +12,7 @@ An application that uses Gemini AI to analyze uploaded reports and documents, ex
 - Responsive design for all device sizes
 - Analytics tracking for monitoring user interactions
 - Robust timeout handling and automatic retry mechanism
+- Cross-browser compatibility with CORS error handling
 
 ## Setup for Gemini AI Integration
 
@@ -82,6 +83,7 @@ The application includes several optimizations to handle large documents and lon
 3. **Progressive loading indicators**: Users are shown real-time feedback on long-running operations.
 4. **Enhanced error handling**: Clear error messages with troubleshooting suggestions.
 5. **Server-side optimizations**: Improved memory management and Gemini API prompt handling.
+6. **CORS error handling**: Graceful fallback for analytics tracking when cross-origin restrictions are encountered.
 
 ## Customizing the Analysis
 

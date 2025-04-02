@@ -2,6 +2,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 
 // Add dotenv to load environment variables from .env file
 try {
@@ -1792,6 +1793,32 @@ async function handleDownloadDocument(req, res) {
   }
 }
 
+// Function to proxy analytics script
+async function proxyAnalyticsScript(req, res) {
+  console.log(`[PROXY] Proxying analytics script request`);
+  
+  // Target URL for the analytics script
+  const targetUrl = 'https://analytics.api.app.kimuse.rw/tracking/script.min.js';
+  
+  // Make a request to the target URL
+  https.get(targetUrl, (proxyRes) => {
+    // Set response headers
+    res.writeHead(200, {
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'public, max-age=86400'  // Cache for 24 hours
+    });
+    
+    // Pipe the response from the target server to our response
+    proxyRes.pipe(res);
+    
+    console.log(`[PROXY] Successfully proxied analytics script`);
+  }).on('error', (err) => {
+    console.error(`[PROXY] Error proxying analytics script: ${err.message}`);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Error proxying analytics script');
+  });
+}
+
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   const start = Date.now();
@@ -1812,6 +1839,13 @@ const server = http.createServer((req, res) => {
         time: new Date().toISOString(),
         uptime: process.uptime()
       }));
+      return;
+    }
+    
+    // Proxy the analytics script
+    if (req.method === 'GET' && req.url === '/api/proxy/analytics.js') {
+      console.log(`[PROXY] Received analytics script proxy request`);
+      proxyAnalyticsScript(req, res);
       return;
     }
     
