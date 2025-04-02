@@ -4,6 +4,16 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.10] - 2024-04-02
+
+### Fixed
+- Fixed analytics script initialization issues:
+  - Removed redundant analytics script tags
+  - Added proper initialization check before sending events
+  - Updated analytics script loading to use direct URL
+  - Added event queuing when analytics is not initialized
+  - Improved DOM ready handling for script loading
+
 ## [1.0.9] - 2024-04-02
 
 ### Fixed

@@ -14,6 +14,10 @@
 
         // Create a simulated analytics function when the original script fails
         window.sendAnalytics = function(event) {
+            if (!window.analyticsConfig.initialized) {
+                console.log("Analytics not initialized yet, queuing event:", event);
+                return;
+            }
             console.log("Analytics event (fallback):", event);
             // Implement pixel tracking fallback
             try {
@@ -37,13 +41,14 @@
 
             const maxRetries = 3;
             const script = document.createElement('script');
-            script.src = "/api/proxy/analytics.js";
+            script.src = "https://analytics.api.app.kimuse.rw/tracking/script.min.js";
             script.setAttribute('data-project-id', window.analyticsConfig.projectId);
             script.async = true;
             
             script.onload = function() {
                 console.log('Analytics script loaded successfully');
                 window.analyticsConfig.initialized = true;
+                // Initialize any queued events here if needed
             };
             
             script.onerror = function() {
@@ -56,10 +61,12 @@
             document.head.appendChild(script);
         }
 
-        // Start loading analytics
-        document.addEventListener('DOMContentLoaded', function() {
+        // Start loading analytics when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadAnalytics);
+        } else {
             loadAnalytics();
-        });
+        }
     </script>
     <style>
         /* Reset and base styles */
