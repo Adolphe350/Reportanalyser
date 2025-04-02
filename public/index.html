@@ -6,6 +6,12 @@
     <title>AI Report Analyzer</title>
     <!-- Analytics script with error handling -->
     <script>
+        // Initialize analytics configuration
+        window.analyticsConfig = {
+            projectId: 'db60ea84-01e7-48fd-b1f0-b181dbb5863d',
+            initialized: false
+        };
+
         // Create a simulated analytics function when the original script fails
         window.sendAnalytics = function(event) {
             console.log("Analytics event (fallback):", event);
@@ -13,7 +19,7 @@
             try {
                 const pixel = new Image();
                 pixel.src = "https://analytics.api.app.kimuse.rw/pixel?" + new URLSearchParams({
-                    projectId: "db60ea84-01e7-48fd-b1f0-b181dbb5863d",
+                    projectId: window.analyticsConfig.projectId,
                     event: JSON.stringify(event),
                     timestamp: new Date().toISOString()
                 }).toString();
@@ -24,11 +30,21 @@
 
         // Load the analytics script with retry
         function loadAnalytics(retryCount = 0) {
+            if (window.analyticsConfig.initialized) {
+                console.log('Analytics already initialized');
+                return;
+            }
+
             const maxRetries = 3;
             const script = document.createElement('script');
             script.src = "/api/proxy/analytics.js";
-            script.setAttribute('data-project-id', 'db60ea84-01e7-48fd-b1f0-b181dbb5863d');
+            script.setAttribute('data-project-id', window.analyticsConfig.projectId);
             script.async = true;
+            
+            script.onload = function() {
+                console.log('Analytics script loaded successfully');
+                window.analyticsConfig.initialized = true;
+            };
             
             script.onerror = function() {
                 console.warn(`Analytics script failed to load (attempt ${retryCount + 1}/${maxRetries})`);
@@ -41,7 +57,9 @@
         }
 
         // Start loading analytics
-        loadAnalytics();
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAnalytics();
+        });
     </script>
     <style>
         /* Reset and base styles */
