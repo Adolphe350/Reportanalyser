@@ -4,6 +4,16 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.8] - 2024-04-02
+
+### Fixed
+- Fixed analytics script cross-origin issues by:
+  - Adding proper CORS headers to analytics proxy
+  - Implementing robust error handling and retries
+  - Adding pixel tracking fallback mechanism
+  - Improving script loading with retry logic
+  - Adding better logging for debugging
+
 ## [1.0.7] - 2024-04-02
 
 ### Fixed

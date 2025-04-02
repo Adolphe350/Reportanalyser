@@ -8,10 +8,41 @@
     <script>
         // Create a simulated analytics function when the original script fails
         window.sendAnalytics = function(event) {
-            console.log("Analytics event:", event);
+            console.log("Analytics event (fallback):", event);
+            // Implement pixel tracking fallback
+            try {
+                const pixel = new Image();
+                pixel.src = "https://analytics.api.app.kimuse.rw/pixel?" + new URLSearchParams({
+                    projectId: "db60ea84-01e7-48fd-b1f0-b181dbb5863d",
+                    event: JSON.stringify(event),
+                    timestamp: new Date().toISOString()
+                }).toString();
+            } catch (err) {
+                console.warn("Pixel tracking failed:", err);
+            }
         };
+
+        // Load the analytics script with retry
+        function loadAnalytics(retryCount = 0) {
+            const maxRetries = 3;
+            const script = document.createElement('script');
+            script.src = "/api/proxy/analytics.js";
+            script.setAttribute('data-project-id', 'db60ea84-01e7-48fd-b1f0-b181dbb5863d');
+            script.async = true;
+            
+            script.onerror = function() {
+                console.warn(`Analytics script failed to load (attempt ${retryCount + 1}/${maxRetries})`);
+                if (retryCount < maxRetries) {
+                    setTimeout(() => loadAnalytics(retryCount + 1), 1000 * Math.pow(2, retryCount));
+                }
+            };
+            
+            document.head.appendChild(script);
+        }
+
+        // Start loading analytics
+        loadAnalytics();
     </script>
-    <script src="https://analytics.api.app.kimuse.rw/tracking/script.min.js" data-project-id="db60ea84-01e7-48fd-b1f0-b181dbb5863d"></script>
     <style>
         /* Reset and base styles */
         * { margin: 0; padding: 0; box-sizing: border-box; }

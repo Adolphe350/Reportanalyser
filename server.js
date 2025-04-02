@@ -1761,23 +1761,84 @@ async function proxyAnalyticsScript(req, res) {
   // Target URL for the analytics script
   const targetUrl = 'https://analytics.api.app.kimuse.rw/tracking/script.min.js';
   
-  // Make a request to the target URL
-  https.get(targetUrl, (proxyRes) => {
-    // Set response headers
-    res.writeHead(200, {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'public, max-age=86400'  // Cache for 24 hours
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  
+  try {
+    // Make a request to the target URL with proper error handling
+    const request = https.get(targetUrl, {
+      timeout: 5000, // 5 second timeout
+      headers: {
+        'User-Agent': 'AI-Report-Analyzer/1.0',
+        'Accept': '*/*'
+      }
     });
     
-    // Pipe the response from the target server to our response
-    proxyRes.pipe(res);
+    request.on('response', (proxyRes) => {
+      // Set response headers
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript',
+        'Cache-Control': 'public, max-age=86400',  // Cache for 24 hours
+        'Access-Control-Allow-Origin': '*'
+      });
+      
+      // Pipe the response with error handling
+      proxyRes.pipe(res).on('error', (err) => {
+        console.error(`[PROXY] Error piping response: ${err.message}`);
+        res.end(`console.error("Analytics script error: ${err.message}");`);
+      });
+      
+      console.log(`[PROXY] Successfully proxied analytics script`);
+    });
     
-    console.log(`[PROXY] Successfully proxied analytics script`);
-  }).on('error', (err) => {
-    console.error(`[PROXY] Error proxying analytics script: ${err.message}`);
-    res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end('Error proxying analytics script');
-  });
+    request.on('error', (err) => {
+      console.error(`[PROXY] Error requesting analytics script: ${err.message}`);
+      res.writeHead(500, { 
+        'Content-Type': 'application/javascript',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(`
+        console.warn("Analytics script failed to load. Creating fallback tracking function.");
+        window.sendAnalytics = function(event) {
+          console.log("Analytics event (fallback):", event);
+          // Implement pixel tracking fallback
+          const pixel = new Image();
+          pixel.src = "https://analytics.api.app.kimuse.rw/pixel?" + new URLSearchParams({
+            projectId: "${req.query?.projectId || 'unknown'}",
+            event: JSON.stringify(event),
+            timestamp: new Date().toISOString()
+          }).toString();
+        };
+      `);
+    });
+    
+    request.on('timeout', () => {
+      request.destroy();
+      console.error(`[PROXY] Analytics script request timed out`);
+      res.writeHead(504, { 
+        'Content-Type': 'application/javascript',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(`console.error("Analytics script timed out. Using fallback tracking.");`);
+    });
+  } catch (err) {
+    console.error(`[PROXY] Error in analytics proxy: ${err.message}`);
+    res.writeHead(500, { 
+      'Content-Type': 'application/javascript',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(`console.error("Analytics script error: ${err.message}");`);
+  }
 }
 
 // Create a simple HTTP server
