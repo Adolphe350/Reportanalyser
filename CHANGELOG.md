@@ -4,6 +4,15 @@ All notable changes to the AI Report Analyzer project will be documented in this
 
 ## [Unreleased]
 
+## [1.0.17] - 2024-04-02
+
+### Fixed
+- Enhanced analytics configuration with proper CORS settings
+- Added explicit endpoint configuration for analytics tracking
+- Improved cross-domain tracking support
+- Added debug mode for better troubleshooting
+- Updated analytics script attributes for better compatibility
+
 ## [1.0.16] - 2024-04-02
 
 ### Fixed
