@@ -1841,6 +1841,81 @@ async function proxyAnalyticsScript(req, res) {
   }
 }
 
+// Add CORS headers to all responses
+function setCORSHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+}
+
+// Function to handle pixel tracking
+async function handlePixelTracking(req, res) {
+  console.log(`[PIXEL] Received pixel tracking request`);
+  
+  try {
+    // Set CORS headers
+    setCORSHeaders(res);
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    
+    // Get tracking parameters from query string
+    const urlParts = req.url.split('?');
+    const queryParams = new URLSearchParams(urlParts[1] || '');
+    const projectId = queryParams.get('projectId');
+    const event = queryParams.get('event');
+    const timestamp = queryParams.get('timestamp');
+    
+    // Forward the tracking data to the analytics service
+    const trackingUrl = 'https://analytics.api.app.kimuse.rw/pixel';
+    const forwardRequest = https.request(trackingUrl + '?' + urlParts[1], {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'AI-Report-Analyzer/1.0',
+        'Accept': 'image/gif',
+        'Origin': req.headers.origin || 'https://kyle.app.kimuse.rw'
+      }
+    });
+    
+    forwardRequest.on('response', (trackingRes) => {
+      // Return a 1x1 transparent GIF
+      res.writeHead(200, {
+        'Content-Type': 'image/gif',
+        'Content-Length': '42',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
+      res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+    });
+    
+    forwardRequest.on('error', (err) => {
+      console.error(`[PIXEL] Error forwarding pixel request: ${err.message}`);
+      // Still return a pixel to prevent client-side errors
+      res.writeHead(200, {
+        'Content-Type': 'image/gif',
+        'Content-Length': '42',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
+      res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+    });
+    
+    forwardRequest.end();
+  } catch (err) {
+    console.error(`[PIXEL] Error in pixel tracking: ${err.message}`);
+    // Return pixel even on error
+    res.writeHead(200, {
+      'Content-Type': 'image/gif',
+      'Content-Length': '42',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
+    res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+  }
+}
+
 // Create a simple HTTP server
 const server = http.createServer((req, res) => {
   // Set higher timeout for the server
@@ -1904,6 +1979,13 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.startsWith('/api/download')) {
       console.log(`[API] Received document download request`);
       handleDownloadDocument(req, res);
+      return;
+    }
+    
+    // In the server request handler, add the new pixel endpoint
+    if (req.method === 'GET' && req.url.startsWith('/api/pixel')) {
+      console.log(`[PIXEL] Handling pixel tracking request`);
+      handlePixelTracking(req, res);
       return;
     }
     

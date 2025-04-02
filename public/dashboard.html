@@ -4,7 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - AI Report Analyzer</title>
-    <!-- Analytics script -->
+    <!-- Analytics script with proxy configuration -->
+    <script>
+        window.analyticsConfig = {
+            projectId: 'db60ea84-01e7-48fd-b1f0-b181dbb5863d',
+            pixelEndpoint: '/api/pixel',
+            retryAttempts: 3,
+            debug: true
+        };
+    </script>
     <script src="https://analytics.api.app.kimuse.rw/tracking/script.min.js" data-project-id="db60ea84-01e7-48fd-b1f0-b181dbb5863d"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
